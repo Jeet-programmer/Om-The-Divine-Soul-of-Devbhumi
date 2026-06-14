@@ -15,6 +15,12 @@ export async function listBookings(): Promise<Booking[]> {
   return docs.map(serialize);
 }
 
+export async function getBookingById(id: string): Promise<Booking | null> {
+  const db = await getDb();
+  const doc = await db.collection(COLL).findOne({ _id: new ObjectId(id) });
+  return doc ? serialize(doc) : null;
+}
+
 export async function createBooking(data: Partial<Booking>): Promise<Booking> {
   const db = await getDb();
   const doc = {
@@ -34,6 +40,8 @@ export async function createBooking(data: Partial<Booking>): Promise<Booking> {
     email: data.email || "",
     phone: data.phone || "",
     notes: data.notes || "",
+    ...(data.couponCode ? { couponCode: data.couponCode } : {}),
+    discount: Number(data.discount) || 0,
     status: "pending" as BookingStatus,
     paymentStatus: data.paymentStatus || "unpaid",
     ...(data.paymentType ? { paymentType: data.paymentType } : {}),

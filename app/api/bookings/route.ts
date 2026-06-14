@@ -2,6 +2,8 @@ import { NextResponse } from "next/server";
 import { createBooking, listBookings } from "@/lib/bookings";
 import { adjustAvailabilityBySlug } from "@/lib/rooms";
 import { verifySignature } from "@/lib/razorpay";
+import { incrementCouponUsage } from "@/lib/coupons";
+import { sendBookingConfirmation } from "@/lib/email";
 import { PaymentStatus, PaymentType } from "@/lib/types";
 
 export const runtime = "nodejs";
@@ -27,7 +29,12 @@ export async function POST(req: Request) {
     let razorpayPaymentId: string | undefined;
 
     const pay = body.payment;
-    if (pay && pay.paymentId) {
+    if (pay && pay.free) {
+      // fully discounted (e.g. 100% coupon) — nothing to charge
+      paymentType = pay.type === "partial" ? "partial" : "full";
+      paymentStatus = "paid";
+      amountPaid = 0;
+    } else if (pay && pay.paymentId) {
       if (!verifySignature(pay.orderId, pay.paymentId, pay.signature)) {
         return NextResponse.json({ error: "Payment verification failed" }, { status: 400 });
       }
@@ -53,6 +60,13 @@ export async function POST(req: Request) {
         booking.category === "stay" ? booking.rooms || 1 : booking.guests || 1;
       await adjustAvailabilityBySlug(booking.roomSlug, -units).catch(() => {});
     }
+    // best-effort: count coupon redemption
+    if (booking.couponCode) {
+      await incrementCouponUsage(booking.couponCode).catch(() => {});
+    }
+    // best-effort: send the themed confirmation email (no-op if not connected)
+    const origin = new URL(req.url).origin;
+    await sendBookingConfirmation(booking, origin).catch(() => {});
     return NextResponse.json(booking);
   } catch (e) {
     return NextResponse.json({ error: (e as Error).message }, { status: 500 });

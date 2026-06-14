@@ -31,6 +31,27 @@ export type BookingStatus = "pending" | "confirmed" | "cancelled";
 export type PaymentStatus = "unpaid" | "partial" | "paid";
 export type PaymentType = "full" | "partial";
 
+export type CouponType = "percent" | "fixed";
+
+export interface Coupon {
+  _id: string;
+  code: string;
+  type: CouponType;
+  /** percent (0-100) or fixed ₹ amount */
+  value: number;
+  active: boolean;
+  /** minimum order total required to apply (0 = none) */
+  minAmount: number;
+  /** cap on discount for percent coupons (0 = no cap) */
+  maxDiscount: number;
+  /** total redemptions allowed (0 = unlimited) */
+  usageLimit: number;
+  usedCount: number;
+  /** ISO date; empty = never expires */
+  expiresAt?: string;
+  createdAt: string;
+}
+
 export interface Booking {
   _id: string;
   ref: string;
@@ -50,6 +71,8 @@ export interface Booking {
   email: string;
   phone: string;
   notes?: string;
+  couponCode?: string;
+  discount: number;
   status: BookingStatus;
   /** payment */
   paymentStatus: PaymentStatus;

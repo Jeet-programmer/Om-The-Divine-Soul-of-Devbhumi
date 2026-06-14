@@ -15,6 +15,13 @@ export const ADMIN_COOKIE = "om_admin_session";
 export const ADMIN_TOKEN =
   process.env.ADMIN_SESSION_SECRET || "om-divine-soul-7f3a9c1e8b4d2a6f-admin";
 
+/** True if the request carries a valid admin session cookie. */
+export function isAuthedRequest(req: Request): boolean {
+  const cookie = req.headers.get("cookie") || "";
+  const m = cookie.match(new RegExp(`${ADMIN_COOKIE}=([^;]+)`));
+  return m?.[1] === ADMIN_TOKEN;
+}
+
 export function validateAdmin(email: unknown, password: unknown): boolean {
   return (
     typeof email === "string" &&

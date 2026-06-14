@@ -20,14 +20,18 @@ export function middleware(req: NextRequest) {
   }
 
   // ---- Admin APIs ----
-  // Guests must be able to create a booking without logging in.
-  if (pathname === "/api/bookings" && req.method === "POST") {
+  // Guests must be able to do these without logging in.
+  const publicPost =
+    (pathname === "/api/bookings" && req.method === "POST") ||
+    (pathname === "/api/coupons/validate" && req.method === "POST");
+  if (publicPost) {
     return NextResponse.next();
   }
   // Everything else under these prefixes is admin-only.
   if (
     pathname.startsWith("/api/rooms") ||
     pathname.startsWith("/api/bookings") ||
+    pathname.startsWith("/api/coupons") ||
     pathname === "/api/upload"
   ) {
     if (!authed) {
@@ -39,5 +43,12 @@ export function middleware(req: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/admin", "/admin/:path*", "/api/rooms/:path*", "/api/bookings/:path*", "/api/upload"],
+  matcher: [
+    "/admin",
+    "/admin/:path*",
+    "/api/rooms/:path*",
+    "/api/bookings/:path*",
+    "/api/coupons/:path*",
+    "/api/upload",
+  ],
 };

@@ -1,8 +1,10 @@
 "use client";
 
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import { Booking, BookingStatus, Room } from "@/lib/types";
+import { Booking, BookingStatus, Coupon, Room } from "@/lib/types";
 import { formatINR } from "@/lib/data";
+
+type Tab = "rooms" | "bookings" | "coupons" | "email";
 
 /* ----------------------------- shared styles ----------------------------- */
 const C = {
@@ -56,9 +58,10 @@ const btnGhost: CSSProperties = {
 
 /* ============================== ROOT PAGE ============================== */
 export default function AdminPage() {
-  const [tab, setTab] = useState<"rooms" | "bookings">("rooms");
+  const [tab, setTab] = useState<Tab>("rooms");
   const [rooms, setRooms] = useState<Room[]>([]);
   const [bookings, setBookings] = useState<Booking[]>([]);
+  const [coupons, setCoupons] = useState<Coupon[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -66,14 +69,17 @@ export default function AdminPage() {
     setLoading(true);
     setError("");
     try {
-      const [r, b] = await Promise.all([
+      const [r, b, c] = await Promise.all([
         fetch("/api/rooms").then((x) => x.json()),
         fetch("/api/bookings").then((x) => x.json()),
+        fetch("/api/coupons").then((x) => x.json()),
       ]);
       if (r.error) throw new Error(r.error);
       if (b.error) throw new Error(b.error);
+      if (c.error) throw new Error(c.error);
       setRooms(r);
       setBookings(b);
+      setCoupons(c);
     } catch (e) {
       setError((e as Error).message || "Failed to load data");
     } finally {
@@ -149,8 +155,13 @@ export default function AdminPage() {
       </header>
 
       {/* tabs */}
-      <div style={{ display: "flex", gap: 8, padding: "22px 28px 0", maxWidth: 1200, margin: "0 auto", width: "100%" }}>
-        {(["rooms", "bookings"] as const).map((t) => (
+      <div style={{ display: "flex", gap: 8, padding: "22px 28px 0", maxWidth: 1200, margin: "0 auto", width: "100%", flexWrap: "wrap" }}>
+        {([
+          ["rooms", `Rooms & Retreats (${rooms.length})`],
+          ["bookings", `Bookings (${bookings.length})`],
+          ["coupons", `Coupons (${coupons.length})`],
+          ["email", "Email"],
+        ] as [Tab, string][]).map(([t, labelText]) => (
           <button
             key={t}
             onClick={() => setTab(t)}
@@ -159,11 +170,10 @@ export default function AdminPage() {
               background: tab === t ? C.ink : "transparent",
               color: tab === t ? "#fbf0dc" : C.soft,
               border: tab === t ? "none" : `1.5px solid ${C.line}`,
-              textTransform: "capitalize",
               padding: "10px 20px",
             }}
           >
-            {t === "rooms" ? `Rooms & Retreats (${rooms.length})` : `Bookings (${bookings.length})`}
+            {labelText}
           </button>
         ))}
       </div>
@@ -181,6 +191,10 @@ export default function AdminPage() {
         {!loading && !error && tab === "bookings" && (
           <BookingsTab bookings={bookings} setBookings={setBookings} />
         )}
+        {!loading && !error && tab === "coupons" && (
+          <CouponsTab coupons={coupons} setCoupons={setCoupons} />
+        )}
+        {!loading && !error && tab === "email" && <EmailTab />}
       </main>
     </div>
   );
@@ -639,6 +653,24 @@ function BookingsTab({
     setBookings((bs) => bs.filter((b) => b._id !== id));
   }
 
+  const [resendId, setResendId] = useState<string | null>(null);
+  const [sentId, setSentId] = useState<string | null>(null);
+  async function resend(id: string) {
+    setResendId(id);
+    setSentId(null);
+    try {
+      const res = await fetch(`/api/bookings/${id}/resend`, { method: "POST" });
+      const out = await res.json();
+      if (!res.ok) throw new Error(out.error || "Failed to send");
+      setSentId(id);
+      setTimeout(() => setSentId((s) => (s === id ? null : s)), 2500);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setResendId(null);
+    }
+  }
+
   const cell: CSSProperties = { padding: "12px 14px", fontSize: 13.5, color: C.soft, verticalAlign: "top" };
   const th: CSSProperties = {
     padding: "10px 14px",
@@ -770,9 +802,30 @@ function BookingsTab({
                     {b.createdAt ? new Date(b.createdAt).toLocaleDateString("en-IN", { day: "numeric", month: "short" }) : "—"}
                   </td>
                   <td style={cell}>
-                    <button onClick={() => remove(b._id)} title="Delete" style={{ ...btnGhost, padding: "6px 10px", color: C.terra }}>
-                      ×
-                    </button>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 6, alignItems: "stretch" }}>
+                      <button
+                        onClick={() => resend(b._id)}
+                        disabled={resendId === b._id}
+                        title="Resend confirmation email"
+                        style={{
+                          ...btnGhost,
+                          padding: "6px 10px",
+                          fontSize: 12,
+                          whiteSpace: "nowrap",
+                          color: sentId === b._id ? "#5f8a3f" : C.soft,
+                          borderColor: sentId === b._id ? "rgba(95,138,63,0.4)" : C.line,
+                        }}
+                      >
+                        {resendId === b._id ? "Sending…" : sentId === b._id ? "Sent ✓" : "✉ Resend"}
+                      </button>
+                      <button
+                        onClick={() => remove(b._id)}
+                        title="Delete"
+                        style={{ ...btnGhost, padding: "6px 10px", fontSize: 12, color: C.terra }}
+                      >
+                        Delete
+                      </button>
+                    </div>
                   </td>
                 </tr>
               ))}
@@ -780,6 +833,343 @@ function BookingsTab({
           </table>
         </div>
       )}
+    </div>
+  );
+}
+
+/* ============================== COUPONS TAB ============================== */
+function CouponsTab({
+  coupons,
+  setCoupons,
+}: {
+  coupons: Coupon[];
+  setCoupons: React.Dispatch<React.SetStateAction<Coupon[]>>;
+}) {
+  const [creating, setCreating] = useState(false);
+
+  async function addCoupon() {
+    setCreating(true);
+    try {
+      const res = await fetch("/api/coupons", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: "SAVE" + Math.floor(Math.random() * 900 + 100),
+          type: "percent",
+          value: 10,
+          active: false,
+          minAmount: 0,
+          maxDiscount: 0,
+          usageLimit: 0,
+        }),
+      });
+      const c = await res.json();
+      if (c.error) throw new Error(c.error);
+      setCoupons((cs) => [c, ...cs]);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setCreating(false);
+    }
+  }
+
+  return (
+    <div>
+      <div style={{ marginBottom: 20 }}>
+        <button disabled={creating} onClick={addCoupon} style={btnAccent}>
+          + Add coupon
+        </button>
+      </div>
+      {coupons.length === 0 ? (
+        <p style={{ color: C.muted }}>No coupons yet. Add one and share the code with guests.</p>
+      ) : (
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill,minmax(340px,1fr))", gap: 20 }}>
+          {coupons.map((c) => (
+            <CouponCard
+              key={c._id}
+              coupon={c}
+              onSaved={(u) => setCoupons((cs) => cs.map((x) => (x._id === u._id ? u : x)))}
+              onDeleted={(id) => setCoupons((cs) => cs.filter((x) => x._id !== id))}
+            />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function CouponCard({
+  coupon,
+  onSaved,
+  onDeleted,
+}: {
+  coupon: Coupon;
+  onSaved: (c: Coupon) => void;
+  onDeleted: (id: string) => void;
+}) {
+  const [draft, setDraft] = useState({
+    code: coupon.code,
+    type: coupon.type,
+    value: String(coupon.value),
+    active: coupon.active,
+    minAmount: String(coupon.minAmount),
+    maxDiscount: String(coupon.maxDiscount),
+    usageLimit: String(coupon.usageLimit),
+    expiresAt: coupon.expiresAt ? coupon.expiresAt.slice(0, 10) : "",
+  });
+  const [saving, setSaving] = useState(false);
+  const [tick, setTick] = useState(false);
+  const set = (k: keyof typeof draft, v: string | boolean) => setDraft((d) => ({ ...d, [k]: v }));
+
+  async function save() {
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/coupons/${coupon._id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          code: draft.code,
+          type: draft.type,
+          value: Number(draft.value) || 0,
+          active: draft.active,
+          minAmount: Number(draft.minAmount) || 0,
+          maxDiscount: draft.type === "percent" ? Number(draft.maxDiscount) || 0 : 0,
+          usageLimit: Number(draft.usageLimit) || 0,
+          expiresAt: draft.expiresAt ? new Date(draft.expiresAt).toISOString() : "",
+        }),
+      });
+      const u = await res.json();
+      if (u.error) throw new Error(u.error);
+      onSaved(u);
+      setTick(true);
+      setTimeout(() => setTick(false), 1500);
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function remove() {
+    if (!confirm(`Delete coupon ${coupon.code}?`)) return;
+    const res = await fetch(`/api/coupons/${coupon._id}`, { method: "DELETE" });
+    const out = await res.json();
+    if (out.error) return alert(out.error);
+    onDeleted(coupon._id);
+  }
+
+  return (
+    <div
+      style={{
+        background: C.panel,
+        borderRadius: 16,
+        border: `1px solid ${C.line}`,
+        boxShadow: "0 6px 20px rgba(44,27,18,0.05)",
+        padding: 20,
+        display: "flex",
+        flexDirection: "column",
+        gap: 12,
+        opacity: draft.active ? 1 : 0.82,
+      }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <span style={{ fontSize: 11.5, color: C.muted, fontWeight: 600 }}>
+          Redeemed {coupon.usedCount}
+          {coupon.usageLimit > 0 ? ` / ${coupon.usageLimit}` : ""}
+        </span>
+        <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: C.soft, cursor: "pointer" }}>
+          <input type="checkbox" checked={draft.active} onChange={(e) => set("active", e.target.checked)} />
+          Active
+        </label>
+      </div>
+
+      <div>
+        <span style={label}>Code</span>
+        <input
+          value={draft.code}
+          onChange={(e) => set("code", e.target.value.toUpperCase())}
+          style={{ ...input, textTransform: "uppercase", fontWeight: 700, letterSpacing: ".05em" }}
+        />
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div>
+          <span style={label}>Discount type</span>
+          <select value={draft.type} onChange={(e) => set("type", e.target.value as "percent" | "fixed")} style={input}>
+            <option value="percent">Percentage (%)</option>
+            <option value="fixed">Fixed (₹)</option>
+          </select>
+        </div>
+        <div>
+          <span style={label}>{draft.type === "percent" ? "Percent off" : "Amount off (₹)"}</span>
+          <input type="number" value={draft.value} onChange={(e) => set("value", e.target.value)} style={input} />
+        </div>
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div>
+          <span style={label}>Min order (₹, 0 = none)</span>
+          <input type="number" value={draft.minAmount} onChange={(e) => set("minAmount", e.target.value)} style={input} />
+        </div>
+        {draft.type === "percent" ? (
+          <div>
+            <span style={label}>Max discount (₹, 0 = none)</span>
+            <input type="number" value={draft.maxDiscount} onChange={(e) => set("maxDiscount", e.target.value)} style={input} />
+          </div>
+        ) : (
+          <div />
+        )}
+      </div>
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+        <div>
+          <span style={label}>Usage limit (0 = ∞)</span>
+          <input type="number" value={draft.usageLimit} onChange={(e) => set("usageLimit", e.target.value)} style={input} />
+        </div>
+        <div>
+          <span style={label}>Expires (optional)</span>
+          <input type="date" value={draft.expiresAt} onChange={(e) => set("expiresAt", e.target.value)} style={input} />
+        </div>
+      </div>
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginTop: 4 }}>
+        <button onClick={remove} style={{ ...btnGhost, color: C.terra, borderColor: "rgba(142,59,30,0.4)" }}>
+          Delete
+        </button>
+        <div style={{ display: "flex", gap: 10, alignItems: "center" }}>
+          {tick && <span style={{ color: "#5f8a3f", fontSize: 13, fontWeight: 600 }}>Saved ✓</span>}
+          <button onClick={save} disabled={saving} style={btnAccent}>
+            {saving ? "Saving…" : "Save"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/* ============================== EMAIL TAB ============================== */
+function EmailTab() {
+  const [status, setStatus] = useState<{ connected: boolean; email?: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [testTo, setTestTo] = useState("");
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  async function load() {
+    setLoading(true);
+    try {
+      const s = await fetch("/api/admin/email/status").then((r) => r.json());
+      setStatus(s);
+    } catch {
+      setStatus({ connected: false });
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function disconnect() {
+    if (!confirm("Disconnect the Google account? Confirmation emails will stop sending.")) return;
+    setBusy(true);
+    await fetch("/api/admin/email/disconnect", { method: "POST" });
+    setBusy(false);
+    load();
+  }
+
+  async function sendTest() {
+    setMsg(null);
+    setBusy(true);
+    try {
+      const res = await fetch("/api/admin/email/test", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ to: testTo }),
+      });
+      const r = await res.json();
+      if (!res.ok) throw new Error(r.error || "Failed to send");
+      setMsg({ ok: true, text: `Test email sent to ${testTo}.` });
+    } catch (e) {
+      setMsg({ ok: false, text: (e as Error).message });
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div style={{ maxWidth: 620 }}>
+      <div
+        style={{
+          background: C.panel,
+          border: `1px solid ${C.line}`,
+          borderRadius: 16,
+          padding: 24,
+        }}
+      >
+        <h2 style={{ fontFamily: "var(--font-cormorant), serif", fontSize: 24, fontWeight: 700, color: C.ink }}>
+          Confirmation emails
+        </h2>
+        <p style={{ fontSize: 14, color: C.soft, marginTop: 6, lineHeight: 1.6 }}>
+          Connect a Google account (Gmail) so guests receive a themed booking-confirmation email
+          automatically. We request only the “send email” permission and store a secure token.
+        </p>
+
+        {loading ? (
+          <p style={{ color: C.muted, marginTop: 18 }}>Checking…</p>
+        ) : status?.connected ? (
+          <div style={{ marginTop: 20 }}>
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: 10,
+                padding: "12px 16px",
+                background: "#eef5e6",
+                border: "1px solid rgba(95,138,63,0.3)",
+                borderRadius: 11,
+              }}
+            >
+              <span style={{ width: 9, height: 9, borderRadius: "50%", background: "#5f8a3f" }} />
+              <span style={{ fontSize: 14, color: C.ink }}>
+                Connected as <strong>{status.email}</strong>
+              </span>
+            </div>
+
+            <div style={{ marginTop: 20 }}>
+              <span style={label}>Send a test email to</span>
+              <div style={{ display: "flex", gap: 8 }}>
+                <input
+                  value={testTo}
+                  onChange={(e) => setTestTo(e.target.value)}
+                  placeholder="you@email.com"
+                  style={input}
+                />
+                <button onClick={sendTest} disabled={busy || !testTo} style={btnAccent}>
+                  {busy ? "…" : "Send test"}
+                </button>
+              </div>
+              {msg && (
+                <p style={{ marginTop: 8, fontSize: 13, color: msg.ok ? "#5f8a3f" : C.terra }}>{msg.text}</p>
+              )}
+            </div>
+
+            <button onClick={disconnect} disabled={busy} style={{ ...btnGhost, color: C.terra, marginTop: 22 }}>
+              Disconnect account
+            </button>
+          </div>
+        ) : (
+          <div style={{ marginTop: 20 }}>
+            <a href="/api/admin/google/connect" style={{ ...btnAccent, textDecoration: "none", display: "inline-block" }}>
+              Connect Google account
+            </a>
+            <p style={{ fontSize: 12.5, color: C.muted, marginTop: 12, lineHeight: 1.6 }}>
+              Requires Google OAuth credentials in the environment (GOOGLE_CLIENT_ID /
+              GOOGLE_CLIENT_SECRET). See .env.example.
+            </p>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

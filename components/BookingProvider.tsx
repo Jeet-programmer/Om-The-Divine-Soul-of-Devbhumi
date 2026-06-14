@@ -61,6 +61,22 @@ interface Errors {
   email?: string;
   phone?: string;
 }
+interface AppliedCoupon {
+  code: string;
+  type: "percent" | "fixed";
+  value: number;
+  maxDiscount: number;
+  minAmount: number;
+}
+
+/** mirrors lib/coupons discountFor + minAmount, so the discount stays correct
+ *  as the order total changes after a coupon is applied */
+function clientDiscount(c: AppliedCoupon, amount: number): number {
+  if (c.minAmount > 0 && amount < c.minAmount) return 0;
+  let d = c.type === "percent" ? Math.round((amount * c.value) / 100) : c.value;
+  if (c.type === "percent" && c.maxDiscount > 0) d = Math.min(d, c.maxDiscount);
+  return Math.max(0, Math.min(d, amount));
+}
 interface ConfSnapshot {
   name: string;
   email: string;
@@ -109,6 +125,10 @@ export default function BookingProvider({
   const [roomCount, setRoomCount] = useState(1);
   const [extraBeds, setExtraBeds] = useState(0);
   const [paymentType, setPaymentType] = useState<"full" | "partial">("full");
+  const [couponInput, setCouponInput] = useState("");
+  const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
+  const [couponMsg, setCouponMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [applyingCoupon, setApplyingCoupon] = useState(false);
 
   const isStay = category === "stay";
   const isRetreat = category === "retreat";
@@ -131,6 +151,9 @@ export default function BookingProvider({
     setRoomCount(1);
     setExtraBeds(0);
     setPaymentType("full");
+    setCouponInput("");
+    setAppliedCoupon(null);
+    setCouponMsg(null);
     setErrors({});
     setStep1Error("");
     setStep2Error("");
@@ -298,8 +321,49 @@ export default function BookingProvider({
 
   const back = () => setStep((s) => Math.max(1, s - 1));
 
+  // coupon discount (recomputed live against the current total)
+  const discount = appliedCoupon ? clientDiscount(appliedCoupon, total) : 0;
+  const payableTotal = Math.max(0, total - discount);
   // amount to pay now based on the selected option (50% advance or full)
-  const amountDue = paymentType === "partial" ? Math.round(total / 2) : total;
+  const amountDue = paymentType === "partial" ? Math.round(payableTotal / 2) : payableTotal;
+
+  const applyCoupon = async () => {
+    const code = couponInput.trim();
+    if (!code) return;
+    setApplyingCoupon(true);
+    setCouponMsg(null);
+    try {
+      const res = await fetch("/api/coupons/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code, amount: total }),
+      });
+      const r = await res.json();
+      if (r.valid) {
+        setAppliedCoupon({
+          code: r.code,
+          type: r.type,
+          value: r.value,
+          maxDiscount: r.maxDiscount || 0,
+          minAmount: r.minAmount || 0,
+        });
+        setCouponMsg({ ok: true, text: r.message });
+      } else {
+        setAppliedCoupon(null);
+        setCouponMsg({ ok: false, text: r.message || "Invalid coupon." });
+      }
+    } catch {
+      setCouponMsg({ ok: false, text: "Couldn't check that coupon. Try again." });
+    } finally {
+      setApplyingCoupon(false);
+    }
+  };
+
+  const removeCoupon = () => {
+    setAppliedCoupon(null);
+    setCouponInput("");
+    setCouponMsg(null);
+  };
 
   const confirm = async () => {
     const e: Errors = {};
@@ -314,7 +378,7 @@ export default function BookingProvider({
         `This selection sleeps ${occupancy}, but you have ${guests} guests. Add a room or an extra bed.`
       );
     }
-    if (total <= 0) return setSubmitError("Please complete your selection first.");
+    if (total <= 0 && !selected) return setSubmitError("Please complete your selection first.");
     setErrors({});
     setSubmitError("");
     setSubmitting(true);
@@ -339,7 +403,9 @@ export default function BookingProvider({
       extraBeds: effectiveExtraBeds,
       extraBedPrice: selected?.extraBedAllowed ? selected.extraBedPrice : 0,
       nights,
-      total,
+      total: payableTotal,
+      discount,
+      couponCode: appliedCoupon?.code || "",
       name: name.trim(),
       email: email.trim(),
       phone: phone.trim(),
@@ -352,15 +418,36 @@ export default function BookingProvider({
         name,
         email,
         item: selected ? selected.name : "",
-        total,
+        total: payableTotal,
         dates: datesLabel,
         amountPaid: paid,
-        balance: Math.max(0, total - paid),
+        balance: Math.max(0, payableTotal - paid),
         paymentType,
       });
       setStep(4);
       setSubmitting(false);
     };
+
+    // fully discounted (e.g. 100%-off coupon) — no payment needed
+    if (amountDue <= 0) {
+      try {
+        const res = await fetch("/api/bookings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            ...bookingPayload,
+            payment: { free: true, type: paymentType, amountPaid: 0 },
+          }),
+        });
+        const saved = await res.json();
+        if (!res.ok) throw new Error(saved.error || "Could not confirm booking.");
+        finishConfirmed(saved, 0);
+      } catch (err) {
+        setSubmitting(false);
+        setSubmitError((err as Error).message);
+      }
+      return;
+    }
 
     try {
       // 1) create a Razorpay order for the amount due now
@@ -475,6 +562,15 @@ export default function BookingProvider({
           amountDue={amountDue}
           setFull={() => setPaymentType("full")}
           setPartial={() => setPaymentType("partial")}
+          couponInput={couponInput}
+          onCouponInput={setCouponInput}
+          onApplyCoupon={applyCoupon}
+          onRemoveCoupon={removeCoupon}
+          couponCode={appliedCoupon?.code || ""}
+          couponMsg={couponMsg}
+          applyingCoupon={applyingCoupon}
+          discount={discount}
+          payableTotal={payableTotal}
           datesLabel={datesLabel}
           submitting={submitting}
           submitError={submitError}
@@ -571,6 +667,15 @@ interface ModalProps {
   amountDue: number;
   setFull: () => void;
   setPartial: () => void;
+  couponInput: string;
+  onCouponInput: (v: string) => void;
+  onApplyCoupon: () => void;
+  onRemoveCoupon: () => void;
+  couponCode: string;
+  couponMsg: { ok: boolean; text: string } | null;
+  applyingCoupon: boolean;
+  discount: number;
+  payableTotal: number;
   datesLabel: string;
   submitting: boolean;
   submitError: string;
@@ -1244,12 +1349,70 @@ function BookingModal(p: ModalProps) {
                       marginBottom: 8,
                     }}
                   >
-                    <span>
-                      Extra bed × {p.extraBeds}
-                    </span>
+                    <span>Extra bed × {p.extraBeds}</span>
                     <span>+{formatINR(p.selected.extraBedPrice)} / night</span>
                   </div>
                 )}
+
+                {/* coupon */}
+                <div
+                  style={{
+                    marginTop: 10,
+                    paddingTop: 12,
+                    borderTop: "1px dashed rgba(44,27,18,0.18)",
+                  }}
+                >
+                  {p.couponCode ? (
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 14 }}>
+                      <span style={{ color: "#5f8a3f", fontWeight: 600 }}>
+                        🏷 {p.couponCode}{" "}
+                        <button
+                          onClick={p.onRemoveCoupon}
+                          style={{
+                            border: "none",
+                            background: "none",
+                            color: "#9a8470",
+                            cursor: "pointer",
+                            fontSize: 12.5,
+                            textDecoration: "underline",
+                            marginLeft: 6,
+                          }}
+                        >
+                          remove
+                        </button>
+                      </span>
+                      <span style={{ color: "#5f8a3f", fontWeight: 600 }}>−{formatINR(p.discount)}</span>
+                    </div>
+                  ) : (
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        value={p.couponInput}
+                        onChange={(e) => p.onCouponInput(e.target.value.toUpperCase())}
+                        placeholder="Coupon code"
+                        style={{ ...inputBase, padding: "10px 12px", fontSize: 14, textTransform: "uppercase" }}
+                      />
+                      <button
+                        onClick={p.onApplyCoupon}
+                        disabled={p.applyingCoupon || !p.couponInput.trim()}
+                        style={{
+                          ...secondaryBtn,
+                          padding: "10px 18px",
+                          fontSize: 14,
+                          whiteSpace: "nowrap",
+                          opacity: p.applyingCoupon || !p.couponInput.trim() ? 0.6 : 1,
+                        }}
+                      >
+                        {p.applyingCoupon ? "…" : "Apply"}
+                      </button>
+                    </div>
+                  )}
+                  {p.couponMsg && !p.couponCode && (
+                    <p style={{ marginTop: 8, fontSize: 12.5, color: p.couponMsg.ok ? "#5f8a3f" : "#b5531f" }}>
+                      {p.couponMsg.text}
+                    </p>
+                  )}
+                </div>
+
                 <div
                   style={{
                     display: "flex",
@@ -1261,17 +1424,24 @@ function BookingModal(p: ModalProps) {
                   }}
                 >
                   <span style={{ fontFamily: "var(--font-mukta), sans-serif", fontWeight: 600, color: "#2c1b12" }}>
-                    Estimated total
+                    Total payable
                   </span>
-                  <span
-                    style={{
-                      fontFamily: "var(--font-cormorant), serif",
-                      fontSize: 26,
-                      fontWeight: 700,
-                      color: "#c0651f",
-                    }}
-                  >
-                    {formatINR(p.total)}
+                  <span style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                    {p.discount > 0 && (
+                      <span style={{ fontSize: 15, color: "#9a8470", textDecoration: "line-through" }}>
+                        {formatINR(p.total)}
+                      </span>
+                    )}
+                    <span
+                      style={{
+                        fontFamily: "var(--font-cormorant), serif",
+                        fontSize: 26,
+                        fontWeight: 700,
+                        color: "#c0651f",
+                      }}
+                    >
+                      {formatINR(p.payableTotal)}
+                    </span>
                   </span>
                 </div>
               </div>
@@ -1281,8 +1451,8 @@ function BookingModal(p: ModalProps) {
                 <span style={uppercaseLabel}>Payment</span>
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 9 }}>
                   {[
-                    { type: "full" as const, title: "Pay in full", sub: "Settle the whole amount now", amt: p.total },
-                    { type: "partial" as const, title: "Pay 50% advance", sub: "Balance payable at the property", amt: Math.round(p.total / 2) },
+                    { type: "full" as const, title: "Pay in full", sub: "Settle the whole amount now", amt: p.payableTotal },
+                    { type: "partial" as const, title: "Pay 50% advance", sub: "Balance payable at the property", amt: Math.round(p.payableTotal / 2) },
                   ].map((opt) => {
                     const active = p.paymentType === opt.type;
                     return (
@@ -1320,7 +1490,7 @@ function BookingModal(p: ModalProps) {
                 </div>
                 {p.paymentType === "partial" && (
                   <p style={{ marginTop: 10, fontSize: 12.5, color: "#6b5340" }}>
-                    Balance of {formatINR(p.total - p.amountDue)} due at check-in.
+                    Balance of {formatINR(p.payableTotal - p.amountDue)} due at check-in.
                   </p>
                 )}
               </div>
