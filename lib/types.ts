@@ -28,6 +28,8 @@ export interface Room {
 }
 
 export type BookingStatus = "pending" | "confirmed" | "cancelled";
+export type PaymentStatus = "unpaid" | "partial" | "paid";
+export type PaymentType = "full" | "partial";
 
 export interface Booking {
   _id: string;
@@ -49,5 +51,11 @@ export interface Booking {
   phone: string;
   notes?: string;
   status: BookingStatus;
+  /** payment */
+  paymentStatus: PaymentStatus;
+  paymentType?: PaymentType;
+  amountPaid: number;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
   createdAt: string;
 }

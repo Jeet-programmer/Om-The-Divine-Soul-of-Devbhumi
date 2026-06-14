@@ -725,7 +725,29 @@ function BookingsTab({
                       </div>
                     ) : null}
                   </td>
-                  <td style={{ ...cell, fontWeight: 600, color: C.ink }}>{formatINR(b.total)}</td>
+                  <td style={{ ...cell, color: C.ink }}>
+                    <div style={{ fontWeight: 600 }}>{formatINR(b.total)}</div>
+                    {(() => {
+                      const ps = b.paymentStatus || "unpaid";
+                      const color = ps === "paid" ? "#5f8a3f" : ps === "partial" ? "#b5862b" : "#b5531f";
+                      const labelText =
+                        ps === "paid"
+                          ? "Paid in full"
+                          : ps === "partial"
+                          ? `50% paid · ${formatINR(b.amountPaid || 0)}`
+                          : "Unpaid";
+                      return (
+                        <div style={{ fontSize: 11.5, fontWeight: 600, color, marginTop: 2 }}>
+                          {labelText}
+                          {ps === "partial" && (
+                            <div style={{ color: C.muted, fontWeight: 400 }}>
+                              Bal {formatINR((b.total || 0) - (b.amountPaid || 0))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
+                  </td>
                   <td style={cell}>
                     <select
                       value={b.status}

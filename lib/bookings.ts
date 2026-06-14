@@ -35,6 +35,11 @@ export async function createBooking(data: Partial<Booking>): Promise<Booking> {
     phone: data.phone || "",
     notes: data.notes || "",
     status: "pending" as BookingStatus,
+    paymentStatus: data.paymentStatus || "unpaid",
+    ...(data.paymentType ? { paymentType: data.paymentType } : {}),
+    amountPaid: Number(data.amountPaid) || 0,
+    ...(data.razorpayOrderId ? { razorpayOrderId: data.razorpayOrderId } : {}),
+    ...(data.razorpayPaymentId ? { razorpayPaymentId: data.razorpayPaymentId } : {}),
     createdAt: new Date().toISOString(),
   };
   const res = await db.collection(COLL).insertOne(doc);

@@ -43,6 +43,19 @@ export function useBooking(): BookingContextValue {
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
 
+/** Load the Razorpay checkout script once, on demand. */
+function loadRazorpay(): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (typeof window === "undefined") return resolve(false);
+    if ((window as unknown as { Razorpay?: unknown }).Razorpay) return resolve(true);
+    const s = document.createElement("script");
+    s.src = "https://checkout.razorpay.com/v1/checkout.js";
+    s.onload = () => resolve(true);
+    s.onerror = () => resolve(false);
+    document.body.appendChild(s);
+  });
+}
+
 interface Errors {
   name?: string;
   email?: string;
@@ -54,6 +67,9 @@ interface ConfSnapshot {
   item: string;
   total: number;
   dates: string;
+  amountPaid: number;
+  balance: number;
+  paymentType: "full" | "partial";
 }
 
 export default function BookingProvider({
@@ -92,6 +108,7 @@ export default function BookingProvider({
   const [submitError, setSubmitError] = useState("");
   const [roomCount, setRoomCount] = useState(1);
   const [extraBeds, setExtraBeds] = useState(0);
+  const [paymentType, setPaymentType] = useState<"full" | "partial">("full");
 
   const isStay = category === "stay";
   const isRetreat = category === "retreat";
@@ -113,6 +130,7 @@ export default function BookingProvider({
     setGuests(prefill?.guests ?? 2);
     setRoomCount(1);
     setExtraBeds(0);
+    setPaymentType("full");
     setErrors({});
     setStep1Error("");
     setStep2Error("");
@@ -280,6 +298,9 @@ export default function BookingProvider({
 
   const back = () => setStep((s) => Math.max(1, s - 1));
 
+  // amount to pay now based on the selected option (50% advance or full)
+  const amountDue = paymentType === "partial" ? Math.round(total / 2) : total;
+
   const confirm = async () => {
     const e: Errors = {};
     if (!name.trim()) e.name = "Please enter your name.";
@@ -293,12 +314,12 @@ export default function BookingProvider({
         `This selection sleeps ${occupancy}, but you have ${guests} guests. Add a room or an extra bed.`
       );
     }
+    if (total <= 0) return setSubmitError("Please complete your selection first.");
     setErrors({});
     setSubmitError("");
     setSubmitting(true);
 
     const ref = "OM-" + Math.random().toString(36).slice(2, 7).toUpperCase();
-    // for retreats the checkout is derived from the fixed length
     const computedCheckOut =
       isRetreat && checkIn && selected?.nights
         ? new Date(new Date(checkIn).getTime() + selected.nights * 86400000)
@@ -306,31 +327,26 @@ export default function BookingProvider({
             .slice(0, 10)
         : checkOut;
 
-    try {
-      const res = await fetch("/api/bookings", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          ref,
-          category,
-          roomSlug: selected?.slug || "",
-          roomName: selected?.name || "",
-          checkIn,
-          checkOut: computedCheckOut,
-          guests,
-          rooms: isRetreat ? 0 : roomCount,
-          extraBeds: effectiveExtraBeds,
-          extraBedPrice: selected?.extraBedAllowed ? selected.extraBedPrice : 0,
-          nights,
-          total,
-          name: name.trim(),
-          email: email.trim(),
-          phone: phone.trim(),
-          notes: notes.trim(),
-        }),
-      });
-      if (!res.ok) throw new Error("save failed");
-      const saved = await res.json();
+    const bookingPayload = {
+      ref,
+      category,
+      roomSlug: selected?.slug || "",
+      roomName: selected?.name || "",
+      checkIn,
+      checkOut: computedCheckOut,
+      guests,
+      rooms: isRetreat ? 0 : roomCount,
+      extraBeds: effectiveExtraBeds,
+      extraBedPrice: selected?.extraBedAllowed ? selected.extraBedPrice : 0,
+      nights,
+      total,
+      name: name.trim(),
+      email: email.trim(),
+      phone: phone.trim(),
+      notes: notes.trim(),
+    };
+
+    const finishConfirmed = (saved: { ref?: string }, paid: number) => {
       setBookingRef(saved.ref || ref);
       setConfSnapshot({
         name,
@@ -338,14 +354,80 @@ export default function BookingProvider({
         item: selected ? selected.name : "",
         total,
         dates: datesLabel,
+        amountPaid: paid,
+        balance: Math.max(0, total - paid),
+        paymentType,
       });
       setStep(4);
-    } catch {
-      setSubmitError(
-        "We couldn't save your reservation just now. Please try again, or call us to confirm."
-      );
-    } finally {
       setSubmitting(false);
+    };
+
+    try {
+      // 1) create a Razorpay order for the amount due now
+      const orderRes = await fetch("/api/payment/order", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: amountDue }),
+      });
+      const order = await orderRes.json();
+      if (!orderRes.ok) throw new Error(order.error || "Could not start payment.");
+
+      // 2) load checkout and open
+      const ok = await loadRazorpay();
+      if (!ok) throw new Error("Couldn't load the payment window. Check your connection.");
+
+      const RazorpayCtor = (window as unknown as { Razorpay: new (o: unknown) => { open: () => void } })
+        .Razorpay;
+      const rzp = new RazorpayCtor({
+        key: order.keyId,
+        order_id: order.orderId,
+        amount: order.amount,
+        currency: order.currency,
+        name: "OM The Divine Soul of Devbhumi",
+        description: `${selected?.name || "Reservation"} · ${paymentType === "partial" ? "50% advance" : "Full payment"}`,
+        prefill: { name: name.trim(), email: email.trim(), contact: phone.trim() },
+        theme: { color: "#d9772b" },
+        handler: async (resp: {
+          razorpay_order_id: string;
+          razorpay_payment_id: string;
+          razorpay_signature: string;
+        }) => {
+          try {
+            const res = await fetch("/api/bookings", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                ...bookingPayload,
+                payment: {
+                  orderId: resp.razorpay_order_id,
+                  paymentId: resp.razorpay_payment_id,
+                  signature: resp.razorpay_signature,
+                  type: paymentType,
+                  amountPaid: amountDue,
+                },
+              }),
+            });
+            const saved = await res.json();
+            if (!res.ok) throw new Error(saved.error || "Could not confirm booking.");
+            finishConfirmed(saved, amountDue);
+          } catch (err) {
+            setSubmitting(false);
+            setSubmitError(
+              `Payment succeeded but we couldn't save the booking: ${(err as Error).message}. Please contact us with payment id ${resp.razorpay_payment_id}.`
+            );
+          }
+        },
+        modal: {
+          ondismiss: () => {
+            setSubmitting(false);
+            setSubmitError("Payment was cancelled — your booking isn't confirmed yet.");
+          },
+        },
+      });
+      rzp.open();
+    } catch (err) {
+      setSubmitting(false);
+      setSubmitError((err as Error).message || "Something went wrong starting payment.");
     }
   };
 
@@ -389,6 +471,10 @@ export default function BookingProvider({
           occupancy={occupancy}
           extraBeds={effectiveExtraBeds}
           maxExtraBeds={maxExtraBeds}
+          paymentType={paymentType}
+          amountDue={amountDue}
+          setFull={() => setPaymentType("full")}
+          setPartial={() => setPaymentType("partial")}
           datesLabel={datesLabel}
           submitting={submitting}
           submitError={submitError}
@@ -481,6 +567,10 @@ interface ModalProps {
   occupancy: number;
   extraBeds: number;
   maxExtraBeds: number;
+  paymentType: "full" | "partial";
+  amountDue: number;
+  setFull: () => void;
+  setPartial: () => void;
   datesLabel: string;
   submitting: boolean;
   submitError: string;
@@ -1186,13 +1276,62 @@ function BookingModal(p: ModalProps) {
                 </div>
               </div>
 
+              {/* payment option */}
+              <div style={{ marginTop: 22 }}>
+                <span style={uppercaseLabel}>Payment</span>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 9 }}>
+                  {[
+                    { type: "full" as const, title: "Pay in full", sub: "Settle the whole amount now", amt: p.total },
+                    { type: "partial" as const, title: "Pay 50% advance", sub: "Balance payable at the property", amt: Math.round(p.total / 2) },
+                  ].map((opt) => {
+                    const active = p.paymentType === opt.type;
+                    return (
+                      <button
+                        key={opt.type}
+                        onClick={opt.type === "full" ? p.setFull : p.setPartial}
+                        style={{
+                          textAlign: "left",
+                          cursor: "pointer",
+                          borderRadius: 12,
+                          padding: "14px 16px",
+                          background: active ? "#fbeeda" : "#fff",
+                          border: "2px solid " + (active ? "#d9772b" : "rgba(44,27,18,0.12)"),
+                          transition: "all .15s",
+                        }}
+                      >
+                        <div style={{ fontFamily: "var(--font-mukta), sans-serif", fontSize: 14, fontWeight: 600, color: "#2c1b12" }}>
+                          {opt.title}
+                        </div>
+                        <div style={{ fontSize: 11.5, color: "#9a8470", marginTop: 2 }}>{opt.sub}</div>
+                        <div
+                          style={{
+                            marginTop: 8,
+                            fontFamily: "var(--font-cormorant), serif",
+                            fontSize: 21,
+                            fontWeight: 700,
+                            color: "#c0651f",
+                          }}
+                        >
+                          {formatINR(opt.amt)}
+                        </div>
+                      </button>
+                    );
+                  })}
+                </div>
+                {p.paymentType === "partial" && (
+                  <p style={{ marginTop: 10, fontSize: 12.5, color: "#6b5340" }}>
+                    Balance of {formatINR(p.total - p.amountDue)} due at check-in.
+                  </p>
+                )}
+              </div>
+
               {p.submitError && (
                 <p style={{ marginTop: 16, color: "#b5531f", fontSize: 14, fontWeight: 500 }}>
                   {p.submitError}
                 </p>
               )}
 
-              <div style={{ marginTop: 28, display: "flex", justifyContent: "space-between" }}>
+              <div style={{ marginTop: 24, display: "flex", justifyContent: "space-between", alignItems: "center", gap: 12 }}>
                 <button onClick={p.onBack} disabled={p.submitting} style={secondaryBtn}>
                   Back
                 </button>
@@ -1207,7 +1346,7 @@ function BookingModal(p: ModalProps) {
                     cursor: p.submitting ? "wait" : "pointer",
                   }}
                 >
-                  {p.submitting ? "Reserving…" : "Confirm Reservation"}
+                  {p.submitting ? "Opening payment…" : `Pay ${formatINR(p.amountDue)} & Confirm`}
                 </button>
               </div>
             </div>
@@ -1290,7 +1429,32 @@ function BookingModal(p: ModalProps) {
                 >
                   {cs?.item}
                   <br />
-                  {cs?.dates} · {formatINR(cs?.total ?? 0)}
+                  {cs?.dates} · Total {formatINR(cs?.total ?? 0)}
+                </div>
+                <div
+                  style={{
+                    marginTop: 12,
+                    paddingTop: 12,
+                    borderTop: "1px dashed rgba(44,27,18,0.16)",
+                    display: "flex",
+                    flexDirection: "column",
+                    gap: 4,
+                    fontSize: 13.5,
+                    color: "#6b5340",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#5f8a3f", fontWeight: 600 }}>
+                      Paid {cs?.paymentType === "partial" ? "(50% advance)" : "(in full)"}
+                    </span>
+                    <span style={{ color: "#5f8a3f", fontWeight: 600 }}>{formatINR(cs?.amountPaid ?? 0)}</span>
+                  </div>
+                  {cs && cs.balance > 0 && (
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span>Balance due at property</span>
+                      <span style={{ fontWeight: 600, color: "#2c1b12" }}>{formatINR(cs.balance)}</span>
+                    </div>
+                  )}
                 </div>
               </div>
               <div style={{ display: "flex", gap: 14, marginTop: 30 }}>
