@@ -1,6 +1,6 @@
 "use client";
 
-import { CSSProperties, useState } from "react";
+import { CSSProperties, useRef, useState } from "react";
 import { useBooking } from "./BookingProvider";
 
 const todayStr = () => new Date().toISOString().slice(0, 10);
@@ -14,17 +14,80 @@ const fieldLabel: CSSProperties = {
   fontWeight: 700,
 };
 
-const fieldInput: CSSProperties = {
-  border: "none",
-  background: "transparent",
-  fontSize: 18,
-  color: "#2c1b12",
-  fontWeight: 600,
-  outline: "none",
-  width: "100%",
-  padding: 0,
-  marginTop: 5,
-};
+/** A tappable date field that always shows readable text and opens the native
+ *  date picker on tap (fixes invisible empty date inputs on mobile). */
+function DateField({
+  label,
+  value,
+  min,
+  onChange,
+}: {
+  label: string;
+  value: string;
+  min: string;
+  onChange: (v: string) => void;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const openPicker = () => {
+    const el = ref.current as (HTMLInputElement & { showPicker?: () => void }) | null;
+    if (!el) return;
+    try {
+      el.showPicker?.();
+    } catch {
+      el.focus();
+    }
+  };
+  const display = value
+    ? new Date(value + "T00:00:00").toLocaleDateString("en-IN", {
+        day: "numeric",
+        month: "short",
+        year: "numeric",
+      })
+    : "Select date";
+
+  return (
+    <div
+      className="hs-field"
+      onClick={openPicker}
+      style={{ position: "relative", flex: 1, minWidth: 0, textAlign: "left", padding: "10px 14px", cursor: "pointer" }}
+    >
+      <span style={fieldLabel}>{label}</span>
+      <div
+        style={{
+          marginTop: 5,
+          fontSize: 18,
+          fontWeight: 600,
+          color: value ? "#2c1b12" : "#a8957f",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {display}
+      </div>
+      <input
+        ref={ref}
+        type="date"
+        value={value}
+        min={min}
+        onChange={(e) => onChange(e.target.value)}
+        onClick={openPicker}
+        aria-label={label}
+        style={{
+          position: "absolute",
+          inset: 0,
+          width: "100%",
+          height: "100%",
+          opacity: 0,
+          border: "none",
+          padding: 0,
+          margin: 0,
+          cursor: "pointer",
+        }}
+      />
+    </div>
+  );
+}
 
 export default function Hero() {
   const { openSearch } = useBooking();
@@ -185,33 +248,16 @@ export default function Hero() {
             border: "1px solid rgba(255,255,255,0.5)",
           }}
         >
-          <div className="hs-field" style={{ flex: 1, textAlign: "left", padding: "10px 14px" }}>
-            <label style={{ display: "block", cursor: "pointer" }}>
-              <span style={fieldLabel}>Check-in</span>
-              <input
-                type="date"
-                value={checkIn}
-                min={todayStr()}
-                onChange={(e) => setCheckIn(e.target.value)}
-                style={fieldInput}
-              />
-            </label>
-          </div>
+          <DateField label="Check-in" value={checkIn} min={todayStr()} onChange={setCheckIn} />
 
           <span className="hs-divider" style={{ width: 1, background: "rgba(44,27,18,0.12)", alignSelf: "center", height: 36 }} />
 
-          <div className="hs-field" style={{ flex: 1, textAlign: "left", padding: "10px 14px" }}>
-            <label style={{ display: "block", cursor: "pointer" }}>
-              <span style={fieldLabel}>Check-out</span>
-              <input
-                type="date"
-                value={checkOut}
-                min={checkIn || todayStr()}
-                onChange={(e) => setCheckOut(e.target.value)}
-                style={fieldInput}
-              />
-            </label>
-          </div>
+          <DateField
+            label="Check-out"
+            value={checkOut}
+            min={checkIn || todayStr()}
+            onChange={setCheckOut}
+          />
 
           <span className="hs-divider" style={{ width: 1, background: "rgba(44,27,18,0.12)", alignSelf: "center", height: 36 }} />
 
