@@ -29,7 +29,11 @@ export async function POST(req: Request) {
     let razorpayPaymentId: string | undefined;
 
     const pay = body.payment;
-    if (pay && pay.free) {
+    if (pay && pay.later) {
+      // reserve now, pay at the property
+      paymentStatus = "unpaid";
+      amountPaid = 0;
+    } else if (pay && pay.free) {
       // fully discounted (e.g. 100% coupon) — nothing to charge
       paymentType = pay.type === "partial" ? "partial" : "full";
       paymentStatus = "paid";

@@ -85,7 +85,7 @@ interface ConfSnapshot {
   dates: string;
   amountPaid: number;
   balance: number;
-  paymentType: "full" | "partial";
+  paymentType: "full" | "partial" | "later";
 }
 
 export default function BookingProvider({
@@ -124,7 +124,7 @@ export default function BookingProvider({
   const [submitError, setSubmitError] = useState("");
   const [roomCount, setRoomCount] = useState(1);
   const [extraBeds, setExtraBeds] = useState(0);
-  const [paymentType, setPaymentType] = useState<"full" | "partial">("full");
+  const [paymentType, setPaymentType] = useState<"full" | "partial" | "later">("full");
   const [couponInput, setCouponInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [couponMsg, setCouponMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -324,8 +324,13 @@ export default function BookingProvider({
   // coupon discount (recomputed live against the current total)
   const discount = appliedCoupon ? clientDiscount(appliedCoupon, total) : 0;
   const payableTotal = Math.max(0, total - discount);
-  // amount to pay now based on the selected option (50% advance or full)
-  const amountDue = paymentType === "partial" ? Math.round(payableTotal / 2) : payableTotal;
+  // amount to pay now based on the selected option
+  const amountDue =
+    paymentType === "later"
+      ? 0
+      : paymentType === "partial"
+      ? Math.round(payableTotal / 2)
+      : payableTotal;
 
   const applyCoupon = async () => {
     const code = couponInput.trim();
@@ -428,6 +433,24 @@ export default function BookingProvider({
       setSubmitting(false);
     };
 
+    // reserve & pay at property — no online payment
+    if (paymentType === "later") {
+      try {
+        const res = await fetch("/api/bookings", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ...bookingPayload, payment: { later: true } }),
+        });
+        const saved = await res.json();
+        if (!res.ok) throw new Error(saved.error || "Could not reserve.");
+        finishConfirmed(saved, 0);
+      } catch (err) {
+        setSubmitting(false);
+        setSubmitError((err as Error).message);
+      }
+      return;
+    }
+
     // fully discounted (e.g. 100%-off coupon) — no payment needed
     if (amountDue <= 0) {
       try {
@@ -463,8 +486,14 @@ export default function BookingProvider({
       const ok = await loadRazorpay();
       if (!ok) throw new Error("Couldn't load the payment window. Check your connection.");
 
-      const RazorpayCtor = (window as unknown as { Razorpay: new (o: unknown) => { open: () => void } })
-        .Razorpay;
+      const RazorpayCtor = (
+        window as unknown as {
+          Razorpay: new (o: unknown) => {
+            open: () => void;
+            on: (event: string, cb: (resp: unknown) => void) => void;
+          };
+        }
+      ).Razorpay;
       const rzp = new RazorpayCtor({
         key: order.keyId,
         order_id: order.orderId,
@@ -510,6 +539,15 @@ export default function BookingProvider({
             setSubmitError("Payment was cancelled — your booking isn't confirmed yet.");
           },
         },
+      });
+      // Razorpay-side failure (declined, merchant/account issue, etc.)
+      rzp.on("payment.failed", (resp: unknown) => {
+        setSubmitting(false);
+        const desc = (resp as { error?: { description?: string } })?.error?.description;
+        setSubmitError(
+          (desc ? `Payment failed: ${desc}. ` : "Payment couldn't be completed. ") +
+            'You can try again, or choose "Reserve & pay at property" to book now and pay on arrival.'
+        );
       });
       rzp.open();
     } catch (err) {
@@ -562,6 +600,7 @@ export default function BookingProvider({
           amountDue={amountDue}
           setFull={() => setPaymentType("full")}
           setPartial={() => setPaymentType("partial")}
+          setLater={() => setPaymentType("later")}
           couponInput={couponInput}
           onCouponInput={setCouponInput}
           onApplyCoupon={applyCoupon}
@@ -663,10 +702,11 @@ interface ModalProps {
   occupancy: number;
   extraBeds: number;
   maxExtraBeds: number;
-  paymentType: "full" | "partial";
+  paymentType: "full" | "partial" | "later";
   amountDue: number;
   setFull: () => void;
   setPartial: () => void;
+  setLater: () => void;
   couponInput: string;
   onCouponInput: (v: string) => void;
   onApplyCoupon: () => void;
@@ -1488,9 +1528,46 @@ function BookingModal(p: ModalProps) {
                     );
                   })}
                 </div>
+                {/* reserve & pay at property */}
+                <button
+                  onClick={p.setLater}
+                  style={{
+                    width: "100%",
+                    textAlign: "left",
+                    cursor: "pointer",
+                    borderRadius: 12,
+                    padding: "13px 16px",
+                    marginTop: 12,
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    gap: 12,
+                    background: p.paymentType === "later" ? "#fbeeda" : "#fff",
+                    border: "2px solid " + (p.paymentType === "later" ? "#d9772b" : "rgba(44,27,18,0.12)"),
+                    transition: "all .15s",
+                  }}
+                >
+                  <span>
+                    <span style={{ fontFamily: "var(--font-mukta), sans-serif", fontSize: 14, fontWeight: 600, color: "#2c1b12" }}>
+                      Reserve &amp; pay at property
+                    </span>
+                    <span style={{ display: "block", fontSize: 11.5, color: "#9a8470", marginTop: 2 }}>
+                      No payment now — settle the full amount at check-in
+                    </span>
+                  </span>
+                  <span style={{ fontFamily: "var(--font-mukta), sans-serif", fontSize: 12, fontWeight: 700, color: "#9a6b2e", whiteSpace: "nowrap" }}>
+                    ₹0 now
+                  </span>
+                </button>
+
                 {p.paymentType === "partial" && (
                   <p style={{ marginTop: 10, fontSize: 12.5, color: "#6b5340" }}>
                     Balance of {formatINR(p.payableTotal - p.amountDue)} due at check-in.
+                  </p>
+                )}
+                {p.paymentType === "later" && (
+                  <p style={{ marginTop: 10, fontSize: 12.5, color: "#6b5340" }}>
+                    {formatINR(p.payableTotal)} payable at the property on arrival.
                   </p>
                 )}
               </div>
@@ -1516,7 +1593,13 @@ function BookingModal(p: ModalProps) {
                     cursor: p.submitting ? "wait" : "pointer",
                   }}
                 >
-                  {p.submitting ? "Opening payment…" : `Pay ${formatINR(p.amountDue)} & Confirm`}
+                  {p.submitting
+                    ? p.paymentType === "later"
+                      ? "Reserving…"
+                      : "Opening payment…"
+                    : p.paymentType === "later"
+                    ? "Reserve — pay at property"
+                    : `Pay ${formatINR(p.amountDue)} & Confirm`}
                 </button>
               </div>
             </div>
@@ -1613,17 +1696,26 @@ function BookingModal(p: ModalProps) {
                     color: "#6b5340",
                   }}
                 >
-                  <div style={{ display: "flex", justifyContent: "space-between" }}>
-                    <span style={{ color: "#5f8a3f", fontWeight: 600 }}>
-                      Paid {cs?.paymentType === "partial" ? "(50% advance)" : "(in full)"}
-                    </span>
-                    <span style={{ color: "#5f8a3f", fontWeight: 600 }}>{formatINR(cs?.amountPaid ?? 0)}</span>
-                  </div>
-                  {cs && cs.balance > 0 && (
+                  {cs?.paymentType === "later" ? (
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span>Balance due at property</span>
-                      <span style={{ fontWeight: 600, color: "#2c1b12" }}>{formatINR(cs.balance)}</span>
+                      <span style={{ color: "#9a6b2e", fontWeight: 600 }}>Pay at property</span>
+                      <span style={{ fontWeight: 600, color: "#2c1b12" }}>{formatINR(cs?.total ?? 0)}</span>
                     </div>
+                  ) : (
+                    <>
+                      <div style={{ display: "flex", justifyContent: "space-between" }}>
+                        <span style={{ color: "#5f8a3f", fontWeight: 600 }}>
+                          Paid {cs?.paymentType === "partial" ? "(50% advance)" : "(in full)"}
+                        </span>
+                        <span style={{ color: "#5f8a3f", fontWeight: 600 }}>{formatINR(cs?.amountPaid ?? 0)}</span>
+                      </div>
+                      {cs && cs.balance > 0 && (
+                        <div style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span>Balance due at property</span>
+                          <span style={{ fontWeight: 600, color: "#2c1b12" }}>{formatINR(cs.balance)}</span>
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               </div>
