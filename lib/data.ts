@@ -95,6 +95,24 @@ export const DEFAULT_QUANTITY: Record<string, number> = {
   sanatan: 8,
 };
 
+/** Guests one room sleeps */
+export const DEFAULT_CAPACITY: Record<string, number> = {
+  glass: 2,
+  heritage: 2,
+  panchkedar: 3,
+  dawn: 1,
+  sanatan: 1,
+};
+
+/** Extra-bed config per offering */
+export const DEFAULT_EXTRA_BED: Record<string, { allowed: boolean; price: number }> = {
+  glass: { allowed: true, price: 1200 },
+  heritage: { allowed: true, price: 1000 },
+  panchkedar: { allowed: true, price: 1500 },
+  dawn: { allowed: false, price: 0 },
+  sanatan: { allowed: false, price: 0 },
+};
+
 /**
  * Room[] derived from the static seed data — used as a graceful fallback so the
  * public site still renders if the database is unreachable.
@@ -111,6 +129,9 @@ export function fallbackRooms(): Room[] {
     images: [s.image],
     quantity: DEFAULT_QUANTITY[s.id] ?? 4,
     available: DEFAULT_QUANTITY[s.id] ?? 4,
+    capacity: DEFAULT_CAPACITY[s.id] ?? 2,
+    extraBedAllowed: DEFAULT_EXTRA_BED[s.id]?.allowed ?? false,
+    extraBedPrice: DEFAULT_EXTRA_BED[s.id]?.price ?? 0,
     active: true,
     order: i,
   }));
@@ -126,6 +147,9 @@ export function fallbackRooms(): Room[] {
     images: [r.image],
     quantity: DEFAULT_QUANTITY[r.id] ?? 10,
     available: DEFAULT_QUANTITY[r.id] ?? 10,
+    capacity: DEFAULT_CAPACITY[r.id] ?? 1,
+    extraBedAllowed: DEFAULT_EXTRA_BED[r.id]?.allowed ?? false,
+    extraBedPrice: DEFAULT_EXTRA_BED[r.id]?.price ?? 0,
     active: true,
     order: STAYS.length + i,
   }));

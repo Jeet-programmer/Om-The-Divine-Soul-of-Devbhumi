@@ -1,6 +1,6 @@
 import { ObjectId, WithId, Document } from "mongodb";
 import { getDb } from "./db";
-import { DEFAULT_QUANTITY, RETREATS, STAYS } from "./data";
+import { DEFAULT_CAPACITY, DEFAULT_EXTRA_BED, DEFAULT_QUANTITY, RETREATS, STAYS } from "./data";
 import { Category, Room } from "./types";
 
 const COLL = "rooms";
@@ -26,6 +26,9 @@ export async function seedRooms(): Promise<void> {
     images: [s.image],
     quantity: DEFAULT_QUANTITY[s.id] ?? 4,
     available: DEFAULT_QUANTITY[s.id] ?? 4,
+    capacity: DEFAULT_CAPACITY[s.id] ?? 2,
+    extraBedAllowed: DEFAULT_EXTRA_BED[s.id]?.allowed ?? false,
+    extraBedPrice: DEFAULT_EXTRA_BED[s.id]?.price ?? 0,
     active: true,
     order: i,
   }));
@@ -40,6 +43,9 @@ export async function seedRooms(): Promise<void> {
     images: [r.image],
     quantity: DEFAULT_QUANTITY[r.id] ?? 10,
     available: DEFAULT_QUANTITY[r.id] ?? 10,
+    capacity: DEFAULT_CAPACITY[r.id] ?? 1,
+    extraBedAllowed: DEFAULT_EXTRA_BED[r.id]?.allowed ?? false,
+    extraBedPrice: DEFAULT_EXTRA_BED[r.id]?.price ?? 0,
     active: true,
     order: STAYS.length + i,
   }));
@@ -56,6 +62,13 @@ export async function listRooms(): Promise<Room[]> {
     .sort({ order: 1, _id: 1 })
     .toArray();
   return docs.map(serialize);
+}
+
+export async function getRoomBySlug(slug: string): Promise<Room | null> {
+  await seedRooms();
+  const db = await getDb();
+  const doc = await db.collection(COLL).findOne({ slug });
+  return doc ? serialize(doc) : null;
 }
 
 function slugify(s: string): string {
@@ -81,6 +94,9 @@ export async function createRoom(data: Partial<Room>): Promise<Room> {
     images: data.images || [],
     quantity,
     available: data.available != null ? Number(data.available) : quantity,
+    capacity: Number(data.capacity) || 2,
+    extraBedAllowed: data.extraBedAllowed === true,
+    extraBedPrice: Number(data.extraBedPrice) || 0,
     active: data.active !== false,
     order: 999,
   };
@@ -97,12 +113,23 @@ const EDITABLE: (keyof Room)[] = [
   "blurb",
   "quantity",
   "available",
+  "capacity",
+  "extraBedAllowed",
+  "extraBedPrice",
   "active",
   "images",
   "slug",
   "order",
 ];
-const NUMERIC: (keyof Room)[] = ["price", "quantity", "available", "nights", "order"];
+const NUMERIC: (keyof Room)[] = [
+  "price",
+  "quantity",
+  "available",
+  "capacity",
+  "extraBedPrice",
+  "nights",
+  "order",
+];
 
 export async function updateRoom(id: string, patch: Partial<Room>): Promise<Room | null> {
   const db = await getDb();

@@ -266,6 +266,9 @@ function RoomCard({
     nights: room.nights != null ? String(room.nights) : "",
     quantity: String(room.quantity),
     available: String(room.available),
+    capacity: String(room.capacity ?? 2),
+    extraBedAllowed: room.extraBedAllowed ?? false,
+    extraBedPrice: String(room.extraBedPrice ?? 0),
     active: room.active,
     tags: room.tags.join(", "),
     blurb: room.blurb,
@@ -293,6 +296,9 @@ function RoomCard({
           nights: draft.category === "retreat" ? Number(draft.nights) || 0 : undefined,
           quantity: Number(draft.quantity) || 0,
           available: Number(draft.available) || 0,
+          capacity: Number(draft.capacity) || 1,
+          extraBedAllowed: draft.extraBedAllowed,
+          extraBedPrice: draft.extraBedAllowed ? Number(draft.extraBedPrice) || 0 : 0,
           active: draft.active,
           tags: draft.tags.split(",").map((t) => t.trim()).filter(Boolean),
           blurb: draft.blurb,
@@ -330,16 +336,29 @@ function RoomCard({
     onSaved(updated);
   }
 
-  async function onFile(e: React.ChangeEvent<HTMLInputElement>) {
-    const file = e.target.files?.[0];
-    if (!file) return;
+  async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
     setUploading(true);
     try {
-      const fd = new FormData();
-      fd.append("file", file);
-      const up = await fetch("/api/upload", { method: "POST", body: fd }).then((x) => x.json());
-      if (up.error) throw new Error(up.error);
-      await attachImage(up.path);
+      let latest: Room | undefined;
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const up = await fetch("/api/upload", { method: "POST", body: fd }).then((x) => x.json());
+        if (up.error) throw new Error(up.error);
+        const res = await fetch(`/api/rooms/${room._id}/images`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ image: up.path }),
+        });
+        latest = await res.json();
+        if ((latest as unknown as { error?: string }).error) {
+          throw new Error((latest as unknown as { error: string }).error);
+        }
+        setImages(latest!.images);
+      }
+      if (latest) onSaved(latest);
     } catch (err) {
       alert((err as Error).message);
     } finally {
@@ -373,16 +392,26 @@ function RoomCard({
       }}
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", gap: 8 }}>
-        <span
-          style={{
-            fontSize: 10.5,
-            letterSpacing: ".12em",
-            textTransform: "uppercase",
-            fontWeight: 700,
-            color: draft.category === "retreat" ? C.terra : C.gold,
-          }}
-        >
-          {draft.category}
+        <span style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <span
+            style={{
+              fontSize: 10.5,
+              letterSpacing: ".12em",
+              textTransform: "uppercase",
+              fontWeight: 700,
+              color: draft.category === "retreat" ? C.terra : C.gold,
+            }}
+          >
+            {draft.category}
+          </span>
+          <a
+            href={`/rooms/${room.slug}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: 12, color: C.muted, textDecoration: "none", fontWeight: 600 }}
+          >
+            ↗ View page
+          </a>
         </span>
         <label style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 13, color: C.soft, cursor: "pointer" }}>
           <input type="checkbox" checked={draft.active} onChange={(e) => set("active", e.target.checked)} />
@@ -433,9 +462,16 @@ function RoomCard({
         </div>
 
         <div style={{ display: "flex", gap: 8, marginTop: 10, flexWrap: "wrap" }}>
-          <input ref={fileRef} type="file" accept="image/*" onChange={onFile} style={{ display: "none" }} />
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={onFiles}
+            style={{ display: "none" }}
+          />
           <button onClick={() => fileRef.current?.click()} disabled={uploading} style={btnGhost}>
-            {uploading ? "Uploading…" : "⬆ Upload image"}
+            {uploading ? "Uploading…" : "⬆ Upload image(s)"}
           </button>
         </div>
         <div style={{ display: "flex", gap: 8, marginTop: 8 }}>
@@ -499,6 +535,36 @@ function RoomCard({
           <input type="number" value={draft.available} onChange={(e) => set("available", e.target.value)} style={input} />
         </div>
       </div>
+
+      {draft.category === "stay" && (
+        <div style={{ background: "#faf3e6", border: `1px solid ${C.line}`, borderRadius: 11, padding: 14 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
+            <div>
+              <span style={label}>Sleeps (guests / room)</span>
+              <input type="number" min={1} value={draft.capacity} onChange={(e) => set("capacity", e.target.value)} style={input} />
+            </div>
+            <div style={{ display: "flex", alignItems: "flex-end" }}>
+              <label style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, color: C.soft, cursor: "pointer", paddingBottom: 9 }}>
+                <input
+                  type="checkbox"
+                  checked={draft.extraBedAllowed}
+                  onChange={(e) => set("extraBedAllowed", e.target.checked)}
+                />
+                Allow extra bed
+              </label>
+            </div>
+          </div>
+          {draft.extraBedAllowed && (
+            <div style={{ marginTop: 12 }}>
+              <span style={label}>Extra bed price (₹ / night each)</span>
+              <input type="number" value={draft.extraBedPrice} onChange={(e) => set("extraBedPrice", e.target.value)} style={input} />
+            </div>
+          )}
+          <p style={{ margin: "8px 2px 0", fontSize: 11.5, color: C.muted }}>
+            Bookings auto-calculate rooms = ⌈guests ÷ sleeps⌉. Extra beds are offered only when allowed.
+          </p>
+        </div>
+      )}
 
       <div>
         <span style={label}>Tags (comma separated)</span>
@@ -646,7 +712,19 @@ function BookingsTab({
                     {b.checkOut ? ` → ${b.checkOut}` : ""}
                     {b.nights ? <div style={{ fontSize: 11.5, color: C.muted }}>{b.nights} night(s)</div> : null}
                   </td>
-                  <td style={cell}>{b.guests}</td>
+                  <td style={cell}>
+                    <div>{b.guests} guest{b.guests > 1 ? "s" : ""}</div>
+                    {b.rooms ? (
+                      <div style={{ fontSize: 11.5, color: C.muted }}>
+                        {b.rooms} room{b.rooms > 1 ? "s" : ""}
+                      </div>
+                    ) : null}
+                    {b.extraBeds ? (
+                      <div style={{ fontSize: 11.5, color: C.muted }}>
+                        +{b.extraBeds} extra bed{b.extraBeds > 1 ? "s" : ""}
+                      </div>
+                    ) : null}
+                  </td>
                   <td style={{ ...cell, fontWeight: 600, color: C.ink }}>{formatINR(b.total)}</td>
                   <td style={cell}>
                     <select

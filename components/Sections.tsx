@@ -1,6 +1,7 @@
 "use client";
 
 import { CSSProperties, useRef } from "react";
+import Link from "next/link";
 import { formatINR } from "@/lib/data";
 import { useBooking } from "./BookingProvider";
 import SmartImage from "./SmartImage";
@@ -592,7 +593,7 @@ export function Stays() {
                   flexDirection: "column",
                 }}
               >
-              <div style={{ position: "relative" }}>
+              <Link href={`/rooms/${room.slug}`} style={{ position: "relative", display: "block", lineHeight: 0 }}>
                 <SmartImage
                   src={room.images[0] || ""}
                   alt={room.name}
@@ -608,6 +609,25 @@ export function Stays() {
                     background: "rgba(28,14,8,0.7)",
                   }}
                 />
+                {room.images.length > 1 && (
+                  <span
+                    style={{
+                      position: "absolute",
+                      bottom: 12,
+                      left: 12,
+                      fontFamily: "var(--font-mukta), sans-serif",
+                      fontSize: 11,
+                      fontWeight: 600,
+                      padding: "4px 10px",
+                      borderRadius: 999,
+                      color: "#fff",
+                      background: "rgba(28,14,8,0.7)",
+                      backdropFilter: "blur(4px)",
+                    }}
+                  >
+                    📷 {room.images.length}
+                  </span>
+                )}
                 <span
                   style={{
                     position: "absolute",
@@ -626,7 +646,7 @@ export function Stays() {
                 >
                   {soldOut ? "Fully booked" : `${room.available} available`}
                 </span>
-              </div>
+              </Link>
               <div style={{ padding: "26px 26px 28px", display: "flex", flexDirection: "column", flex: 1 }}>
                 <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
                   {room.tags.map((t) => (
@@ -647,7 +667,12 @@ export function Stays() {
                     </span>
                   ))}
                 </div>
-                <h4 style={{ fontSize: 25, fontWeight: 600, color: "#fbf0dc" }}>{room.name}</h4>
+                <Link
+                  href={`/rooms/${room.slug}`}
+                  style={{ textDecoration: "none" }}
+                >
+                  <h4 style={{ fontSize: 25, fontWeight: 600, color: "#fbf0dc" }}>{room.name}</h4>
+                </Link>
                 <p
                   style={{
                     marginTop: 8,
@@ -659,6 +684,19 @@ export function Stays() {
                 >
                   {room.blurb}
                 </p>
+                <Link
+                  href={`/rooms/${room.slug}`}
+                  style={{
+                    marginTop: 12,
+                    fontFamily: "var(--font-mukta), sans-serif",
+                    fontSize: 13.5,
+                    fontWeight: 600,
+                    color: "#e2c77f",
+                    textDecoration: "none",
+                  }}
+                >
+                  View details &amp; gallery →
+                </Link>
                 <div
                   style={{
                     display: "flex",

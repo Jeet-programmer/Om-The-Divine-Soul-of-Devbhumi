@@ -90,6 +90,7 @@ export default function BookingProvider({
   const [confSnapshot, setConfSnapshot] = useState<ConfSnapshot | null>(null);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState("");
+  const [extraBeds, setExtraBeds] = useState(0);
 
   const isStay = category === "stay";
   const isRetreat = category === "retreat";
@@ -109,6 +110,7 @@ export default function BookingProvider({
     setCheckIn(prefill?.checkIn ?? "");
     setCheckOut(prefill?.checkOut ?? "");
     setGuests(prefill?.guests ?? 2);
+    setExtraBeds(0);
     setErrors({});
     setStep1Error("");
     setStep2Error("");
@@ -179,11 +181,27 @@ export default function BookingProvider({
     return 0;
   }, [isRetreat, selected, checkIn, checkOut]);
 
+  // rooms a party needs for the selected stay (= ceil(guests / capacity))
+  const roomsNeeded = useMemo(() => {
+    if (isRetreat || !selected) return 0;
+    const cap = Math.max(1, selected.capacity || 1);
+    return Math.max(1, Math.ceil(guests / cap));
+  }, [isRetreat, selected, guests]);
+
+  // at most one extra bed per room, and only if the room type allows it
+  const maxExtraBeds = useMemo(
+    () => (selected?.extraBedAllowed && !isRetreat ? roomsNeeded : 0),
+    [selected, isRetreat, roomsNeeded]
+  );
+  const effectiveExtraBeds = Math.min(extraBeds, maxExtraBeds);
+
   const total = useMemo(() => {
     if (!selected) return 0;
     if (isRetreat) return selected.price * guests;
-    return selected.price * (nights || 1);
-  }, [selected, isRetreat, guests, nights]);
+    const n = nights || 1;
+    const bedPrice = selected.extraBedAllowed ? selected.extraBedPrice : 0;
+    return selected.price * roomsNeeded * n + effectiveExtraBeds * bedPrice * n;
+  }, [selected, isRetreat, guests, nights, roomsNeeded, effectiveExtraBeds]);
 
   const datesLabel = useMemo(() => {
     const opt: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
@@ -225,6 +243,18 @@ export default function BookingProvider({
     }
     if (step === 2) {
       if (!selectedId) return setStep2Error("Please select an option to continue.");
+      if (selected) {
+        if (isStay && selected.available < roomsNeeded) {
+          return setStep2Error(
+            `These ${guests} guests need ${roomsNeeded} rooms, but only ${selected.available} of this type are available. Reduce guests or pick another stay.`
+          );
+        }
+        if (isRetreat && selected.available < guests) {
+          return setStep2Error(
+            `Only ${selected.available} seats remain on this retreat for your party of ${guests}.`
+          );
+        }
+      }
       setStep2Error("");
       setStep(3);
     }
@@ -265,6 +295,9 @@ export default function BookingProvider({
           checkIn,
           checkOut: computedCheckOut,
           guests,
+          rooms: isRetreat ? 0 : roomsNeeded,
+          extraBeds: effectiveExtraBeds,
+          extraBedPrice: selected?.extraBedAllowed ? selected.extraBedPrice : 0,
           nights,
           total,
           name: name.trim(),
@@ -328,6 +361,9 @@ export default function BookingProvider({
           offerings={isRetreat ? retreats : stays}
           nights={nights}
           total={total}
+          roomsNeeded={roomsNeeded}
+          extraBeds={effectiveExtraBeds}
+          maxExtraBeds={maxExtraBeds}
           datesLabel={datesLabel}
           submitting={submitting}
           submitError={submitError}
@@ -356,6 +392,8 @@ export default function BookingProvider({
           }}
           incGuests={() => setGuests((g) => Math.min(12, g + 1))}
           decGuests={() => setGuests((g) => Math.max(1, g - 1))}
+          incBed={() => setExtraBeds((b) => Math.min(maxExtraBeds, b + 1))}
+          decBed={() => setExtraBeds((b) => Math.max(0, b - 1))}
           setName={setName}
           setEmail={setEmail}
           setPhone={setPhone}
@@ -411,6 +449,9 @@ interface ModalProps {
   offerings: Room[];
   nights: number;
   total: number;
+  roomsNeeded: number;
+  extraBeds: number;
+  maxExtraBeds: number;
   datesLabel: string;
   submitting: boolean;
   submitError: string;
@@ -425,6 +466,8 @@ interface ModalProps {
   setCheckOut: (v: string) => void;
   incGuests: () => void;
   decGuests: () => void;
+  incBed: () => void;
+  decBed: () => void;
   setName: (v: string) => void;
   setEmail: (v: string) => void;
   setPhone: (v: string) => void;
@@ -921,6 +964,73 @@ function BookingModal(p: ModalProps) {
                 </label>
               </div>
 
+              {/* rooms needed + extra bed */}
+              {p.isStay && p.selected && (
+                <div
+                  style={{
+                    marginTop: 24,
+                    background: "#fff",
+                    borderRadius: 14,
+                    padding: "18px 20px",
+                    border: "1px solid rgba(192,146,47,0.3)",
+                  }}
+                >
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}>
+                    <span style={{ fontFamily: "var(--font-cormorant), serif", fontSize: 19, fontWeight: 600, color: "#2c1b12" }}>
+                      {p.roomsNeeded} room{p.roomsNeeded > 1 ? "s" : ""} for {p.guests} guest
+                      {p.guests > 1 ? "s" : ""}
+                    </span>
+                    <span style={{ fontSize: 12.5, color: "#9a8470" }}>
+                      sleeps {p.selected.capacity} / room
+                    </span>
+                  </div>
+                  {p.selected.extraBedAllowed ? (
+                    <div
+                      style={{
+                        marginTop: 14,
+                        paddingTop: 14,
+                        borderTop: "1px dashed rgba(44,27,18,0.14)",
+                        display: "flex",
+                        justifyContent: "space-between",
+                        alignItems: "center",
+                        gap: 12,
+                      }}
+                    >
+                      <div>
+                        <div style={{ fontSize: 14, fontWeight: 600, color: "#2c1b12" }}>Add an extra bed</div>
+                        <div style={{ fontSize: 12.5, color: "#9a8470" }}>
+                          +{formatINR(p.selected.extraBedPrice)} / night each · up to {p.maxExtraBeds}
+                        </div>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: 14 }}>
+                        <button onClick={p.decBed} className="qty-btn" style={smallQtyBtn} aria-label="Fewer beds">
+                          −
+                        </button>
+                        <span
+                          style={{
+                            fontFamily: "var(--font-cormorant), serif",
+                            fontSize: 22,
+                            fontWeight: 600,
+                            color: "#2c1b12",
+                            minWidth: 22,
+                            textAlign: "center",
+                          }}
+                        >
+                          {p.extraBeds}
+                        </span>
+                        <button onClick={p.incBed} className="qty-btn" style={smallQtyBtn} aria-label="More beds">
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  ) : (
+                    <div style={{ marginTop: 10, fontSize: 12.5, color: "#9a8470", fontStyle: "italic" }}>
+                      Extra beds aren&rsquo;t available for this room type.
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div
                 style={{
                   marginTop: 24,
@@ -952,7 +1062,11 @@ function BookingModal(p: ModalProps) {
                   }}
                 >
                   <span>
-                    {p.guests + (p.guests > 1 ? " guests" : " guest")} ·{" "}
+                    {p.guests + (p.guests > 1 ? " guests" : " guest")}
+                    {!p.isRetreat && p.roomsNeeded
+                      ? ` · ${p.roomsNeeded} room${p.roomsNeeded > 1 ? "s" : ""}`
+                      : ""}
+                    {" · "}
                     {p.isRetreat
                       ? p.selected?.nights
                         ? p.selected.nights + " nights"
@@ -963,10 +1077,26 @@ function BookingModal(p: ModalProps) {
                   </span>
                   <span>
                     {p.selected
-                      ? formatINR(p.selected.price) + (p.isRetreat ? " / person" : " / night")
+                      ? formatINR(p.selected.price) + (p.isRetreat ? " / person" : " / room / night")
                       : ""}
                   </span>
                 </div>
+                {p.extraBeds > 0 && p.selected && (
+                  <div
+                    style={{
+                      display: "flex",
+                      justifyContent: "space-between",
+                      fontSize: 14,
+                      color: "#6b5340",
+                      marginBottom: 8,
+                    }}
+                  >
+                    <span>
+                      Extra bed × {p.extraBeds}
+                    </span>
+                    <span>+{formatINR(p.selected.extraBedPrice)} / night</span>
+                  </div>
+                )}
                 <div
                   style={{
                     display: "flex",
@@ -1126,6 +1256,21 @@ const qtyBtnStyle: CSSProperties = {
   fontSize: 20,
   color: "#2c1b12",
   lineHeight: 1,
+};
+
+const smallQtyBtn: CSSProperties = {
+  width: 34,
+  height: 34,
+  borderRadius: "50%",
+  border: "1.5px solid rgba(44,27,18,0.18)",
+  background: "#fff",
+  cursor: "pointer",
+  fontSize: 18,
+  color: "#2c1b12",
+  lineHeight: 1,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
 };
 
 const primaryBtn: CSSProperties = {

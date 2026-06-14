@@ -4,12 +4,12 @@ import { useBooking } from "./BookingProvider";
 import Logo from "./Logo";
 
 const navItems = [
-  { href: "#about", label: "About" },
-  { href: "#sanctuary", label: "Sanctuary" },
-  { href: "#experiences", label: "Experiences" },
-  { href: "#stays", label: "Stays" },
-  { href: "#venue", label: "Venue" },
-  { href: "#contact", label: "Contact" },
+  { href: "/#about", label: "About" },
+  { href: "/#sanctuary", label: "Sanctuary" },
+  { href: "/#experiences", label: "Experiences" },
+  { href: "/#stays", label: "Stays" },
+  { href: "/#venue", label: "Venue" },
+  { href: "/#contact", label: "Contact" },
 ];
 
 export default function Header() {
@@ -33,7 +33,7 @@ export default function Header() {
       }}
     >
       <a
-        href="#top"
+        href="/"
         style={{ display: "flex", alignItems: "center", gap: 13, textDecoration: "none" }}
       >
         <Logo size={48} />

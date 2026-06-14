@@ -16,6 +16,12 @@ export interface Room {
   quantity: number;
   /** units currently available to book */
   available: number;
+  /** guests one unit/room sleeps (drives how many rooms a party needs) */
+  capacity: number;
+  /** whether an extra bed can be added to this room type */
+  extraBedAllowed: boolean;
+  /** price per extra bed, per night */
+  extraBedPrice: number;
   /** shown on the public site when true */
   active: boolean;
   order?: number;
@@ -32,6 +38,10 @@ export interface Booking {
   checkIn: string;
   checkOut: string;
   guests: number;
+  /** rooms reserved (stays); 0 for retreats */
+  rooms: number;
+  extraBeds: number;
+  extraBedPrice: number;
   nights: number;
   total: number;
   name: string;
