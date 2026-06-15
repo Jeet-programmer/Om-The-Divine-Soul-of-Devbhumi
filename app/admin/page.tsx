@@ -1,10 +1,10 @@
 "use client";
 
 import { CSSProperties, useEffect, useMemo, useRef, useState } from "react";
-import { Booking, BookingStatus, Coupon, Room } from "@/lib/types";
+import { Booking, BookingStatus, Coupon, GalleryImage, MealPlan, Room } from "@/lib/types";
 import { formatINR } from "@/lib/data";
 
-type Tab = "rooms" | "bookings" | "coupons" | "email";
+type Tab = "rooms" | "bookings" | "coupons" | "gallery" | "email";
 
 /* ----------------------------- shared styles ----------------------------- */
 const C = {
@@ -160,6 +160,7 @@ export default function AdminPage() {
           ["rooms", `Rooms & Retreats (${rooms.length})`],
           ["bookings", `Bookings (${bookings.length})`],
           ["coupons", `Coupons (${coupons.length})`],
+          ["gallery", "Gallery"],
           ["email", "Email"],
         ] as [Tab, string][]).map(([t, labelText]) => (
           <button
@@ -194,6 +195,7 @@ export default function AdminPage() {
         {!loading && !error && tab === "coupons" && (
           <CouponsTab coupons={coupons} setCoupons={setCoupons} />
         )}
+        {!loading && !error && tab === "gallery" && <GalleryTab />}
         {!loading && !error && tab === "email" && <EmailTab />}
       </main>
     </div>
@@ -217,16 +219,16 @@ function RoomsTab({
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          name: category === "stay" ? "New Room" : "New Retreat",
+          name: category === "stay" ? "New Room" : "New Package",
           category,
           price: 0,
           quantity: 1,
           available: 1,
+          capacity: category === "retreat" ? 2 : 2,
           tags: [],
           blurb: "",
           images: [],
           active: false,
-          ...(category === "retreat" ? { nights: 3 } : {}),
         }),
       });
       const room = await res.json();
@@ -288,6 +290,20 @@ function RoomCard({
     blurb: room.blurb,
   });
   const [images, setImages] = useState<string[]>(room.images);
+  const [plans, setPlans] = useState<{ code: string; name: string; price: string }[]>(
+    (room.mealPlans || []).map((p) => ({ code: p.code, name: p.name, price: String(p.price) }))
+  );
+  const setPlan = (i: number, field: "code" | "name" | "price", v: string) =>
+    setPlans((ps) => ps.map((p, idx) => (idx === i ? { ...p, [field]: v } : p)));
+  const addPlan = () => setPlans((ps) => [...ps, { code: "", name: "", price: "" }]);
+  const removePlan = (i: number) => setPlans((ps) => ps.filter((_, idx) => idx !== i));
+  const addStandardPlans = () =>
+    setPlans([
+      { code: "AP", name: "American Plan (B'fast, Lunch, Dinner + Tea)", price: "" },
+      { code: "MAP", name: "Modified American Plan (B'fast, Dinner + Tea)", price: "" },
+      { code: "CP", name: "Continental Plan (B'fast + Tea)", price: "" },
+      { code: "EP", name: "European Plan (room only)", price: "" },
+    ]);
   const [saving, setSaving] = useState(false);
   const [savedTick, setSavedTick] = useState(false);
   const [imgUrl, setImgUrl] = useState("");
@@ -307,12 +323,18 @@ function RoomCard({
           name: draft.name,
           category: draft.category,
           price: Number(draft.price) || 0,
-          nights: draft.category === "retreat" ? Number(draft.nights) || 0 : undefined,
           quantity: Number(draft.quantity) || 0,
           available: Number(draft.available) || 0,
           capacity: Number(draft.capacity) || 1,
           extraBedAllowed: draft.extraBedAllowed,
           extraBedPrice: draft.extraBedAllowed ? Number(draft.extraBedPrice) || 0 : 0,
+          mealPlans: plans
+            .filter((p) => p.code.trim() || p.name.trim())
+            .map((p) => ({
+              code: p.code.trim().toUpperCase(),
+              name: p.name.trim(),
+              price: Number(p.price) || 0,
+            })) as MealPlan[],
           active: draft.active,
           tags: draft.tags.split(",").map((t) => t.trim()).filter(Boolean),
           blurb: draft.blurb,
@@ -528,18 +550,19 @@ function RoomCard({
           </select>
         </div>
         <div>
-          <span style={label}>Price (₹ {draft.category === "retreat" ? "/ person" : "/ night"})</span>
+          <span style={label}>Price (₹ / night)</span>
           <input type="number" value={draft.price} onChange={(e) => set("price", e.target.value)} style={input} />
         </div>
       </div>
 
-      <div style={{ display: "grid", gridTemplateColumns: draft.category === "retreat" ? "1fr 1fr 1fr" : "1fr 1fr", gap: 12 }}>
-        {draft.category === "retreat" && (
-          <div>
-            <span style={label}>Nights</span>
-            <input type="number" value={draft.nights} onChange={(e) => set("nights", e.target.value)} style={input} />
-          </div>
-        )}
+      {draft.category === "retreat" && (
+        <div>
+          <span style={label}>Max party size (guests)</span>
+          <input type="number" min={1} value={draft.capacity} onChange={(e) => set("capacity", e.target.value)} style={input} />
+        </div>
+      )}
+
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
         <div>
           <span style={label}>Total units</span>
           <input type="number" value={draft.quantity} onChange={(e) => set("quantity", e.target.value)} style={input} />
@@ -577,6 +600,66 @@ function RoomCard({
           <p style={{ margin: "8px 2px 0", fontSize: 11.5, color: C.muted }}>
             Bookings auto-calculate rooms = ⌈guests ÷ sleeps⌉. Extra beds are offered only when allowed.
           </p>
+        </div>
+      )}
+
+      {draft.category === "stay" && (
+        <div style={{ background: "#faf3e6", border: `1px solid ${C.line}`, borderRadius: 11, padding: 14 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <span style={{ ...label, marginBottom: 0 }}>Meal / board plans</span>
+            <div style={{ display: "flex", gap: 8 }}>
+              {plans.length === 0 && (
+                <button onClick={addStandardPlans} style={{ ...btnGhost, padding: "5px 10px", fontSize: 11.5 }}>
+                  + AP/MAP/CP/EP
+                </button>
+              )}
+              <button onClick={addPlan} style={{ ...btnGhost, padding: "5px 10px", fontSize: 11.5 }}>
+                + Plan
+              </button>
+            </div>
+          </div>
+          {plans.length === 0 ? (
+            <p style={{ fontSize: 11.5, color: C.muted, margin: 0 }}>
+              No plans — booking uses the base price above. Add plans (e.g. AP/MAP/CP/EP) to let
+              guests choose a board option that sets the nightly rate.
+            </p>
+          ) : (
+            <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+              {plans.map((p, i) => (
+                <div key={i} style={{ display: "grid", gridTemplateColumns: "64px 1fr 92px 28px", gap: 6, alignItems: "center" }}>
+                  <input
+                    value={p.code}
+                    onChange={(e) => setPlan(i, "code", e.target.value.toUpperCase())}
+                    placeholder="AP"
+                    style={{ ...input, padding: "7px 8px", fontSize: 12.5, textTransform: "uppercase", fontWeight: 700 }}
+                  />
+                  <input
+                    value={p.name}
+                    onChange={(e) => setPlan(i, "name", e.target.value)}
+                    placeholder="American Plan (B'fast, Lunch, Dinner)"
+                    style={{ ...input, padding: "7px 8px", fontSize: 12.5 }}
+                  />
+                  <input
+                    type="number"
+                    value={p.price}
+                    onChange={(e) => setPlan(i, "price", e.target.value)}
+                    placeholder="₹/night"
+                    style={{ ...input, padding: "7px 8px", fontSize: 12.5 }}
+                  />
+                  <button
+                    onClick={() => removePlan(i)}
+                    title="Remove plan"
+                    style={{ ...btnGhost, padding: "6px 0", fontSize: 14, color: C.terra, borderColor: "rgba(142,59,30,0.3)" }}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+              <p style={{ fontSize: 11, color: C.muted, margin: "2px 0 0" }}>
+                Price is per night (for the room&rsquo;s base occupancy). The guest picks one at booking.
+              </p>
+            </div>
+          )}
         </div>
       )}
 
@@ -738,6 +821,9 @@ function BookingsTab({
                   <td style={cell}>
                     <div style={{ color: C.ink }}>{b.roomName || "—"}</div>
                     <div style={{ fontSize: 11.5, color: C.muted, textTransform: "capitalize" }}>{b.category}</div>
+                    {b.mealPlan && (
+                      <div style={{ fontSize: 11.5, color: C.gold, fontWeight: 600 }}>{b.mealPlan}</div>
+                    )}
                   </td>
                   <td style={cell}>
                     {b.checkIn || "—"}
@@ -1043,6 +1129,191 @@ function CouponCard({
           </button>
         </div>
       </div>
+    </div>
+  );
+}
+
+/* ============================== GALLERY TAB ============================== */
+function GalleryTab() {
+  const [images, setImages] = useState<GalleryImage[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [err, setErr] = useState("");
+  const [uploading, setUploading] = useState(false);
+  const [imgUrl, setImgUrl] = useState("");
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  async function load() {
+    setLoading(true);
+    setErr("");
+    try {
+      const r = await fetch("/api/gallery").then((x) => x.json());
+      if (r.error) throw new Error(r.error);
+      setImages(r);
+    } catch (e) {
+      setErr((e as Error).message || "Failed to load gallery");
+    } finally {
+      setLoading(false);
+    }
+  }
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function addImage(src: string) {
+    const res = await fetch("/api/gallery", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ src }),
+    });
+    const out = await res.json();
+    if (out.error) throw new Error(out.error);
+    setImages((xs) => [...xs, out]);
+  }
+
+  async function onFiles(e: React.ChangeEvent<HTMLInputElement>) {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    setUploading(true);
+    try {
+      for (const file of files) {
+        const fd = new FormData();
+        fd.append("file", file);
+        const up = await fetch("/api/upload", { method: "POST", body: fd }).then((x) => x.json());
+        if (up.error) throw new Error(up.error);
+        await addImage(up.path);
+      }
+    } catch (e) {
+      alert((e as Error).message);
+    } finally {
+      setUploading(false);
+      if (fileRef.current) fileRef.current.value = "";
+    }
+  }
+
+  async function remove(id: string) {
+    if (!confirm("Remove this photo from the gallery?")) return;
+    const res = await fetch(`/api/gallery/${id}`, { method: "DELETE" });
+    const out = await res.json();
+    if (out.error) return alert(out.error);
+    setImages((xs) => xs.filter((x) => x._id !== id));
+  }
+
+  return (
+    <div>
+      <div
+        style={{
+          background: C.panel,
+          border: `1px solid ${C.line}`,
+          borderRadius: 16,
+          padding: 22,
+          marginBottom: 22,
+        }}
+      >
+        <h2 style={{ fontFamily: "var(--font-cormorant), serif", fontSize: 24, fontWeight: 700, color: C.ink }}>
+          Homepage gallery
+        </h2>
+        <p style={{ fontSize: 14, color: C.soft, marginTop: 6, lineHeight: 1.6 }}>
+          These photos appear in the “Moments from the mountains” section near the bottom of the
+          public site. Upload new ones or paste an image URL — changes go live immediately.
+        </p>
+        <div style={{ display: "flex", gap: 10, marginTop: 16, flexWrap: "wrap", alignItems: "center" }}>
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/*"
+            multiple
+            onChange={onFiles}
+            style={{ display: "none" }}
+          />
+          <button onClick={() => fileRef.current?.click()} disabled={uploading} style={btnAccent}>
+            {uploading ? "Uploading…" : "⬆ Upload photo(s)"}
+          </button>
+          <input
+            value={imgUrl}
+            onChange={(e) => setImgUrl(e.target.value)}
+            placeholder="…or paste an image URL / path"
+            style={{ ...input, fontSize: 13, maxWidth: 320 }}
+          />
+          <button
+            onClick={async () => {
+              const v = imgUrl.trim();
+              if (!v) return;
+              try {
+                await addImage(v);
+                setImgUrl("");
+              } catch (e) {
+                alert((e as Error).message);
+              }
+            }}
+            style={btnGhost}
+          >
+            Add
+          </button>
+        </div>
+      </div>
+
+      {loading ? (
+        <p style={{ color: C.muted }}>Loading…</p>
+      ) : err ? (
+        <p style={{ color: C.terra, fontWeight: 600 }}>{err}</p>
+      ) : images.length === 0 ? (
+        <p style={{ color: C.muted }}>No photos yet. Upload some above.</p>
+      ) : (
+        <>
+          <p style={{ fontSize: 12.5, color: C.muted, marginBottom: 12 }}>
+            {images.length} photo{images.length > 1 ? "s" : ""} shown on the site
+          </p>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "repeat(auto-fill,minmax(150px,1fr))",
+              gap: 12,
+            }}
+          >
+            {images.map((g) => (
+              <div
+                key={g._id}
+                style={{
+                  position: "relative",
+                  borderRadius: 12,
+                  overflow: "hidden",
+                  border: `1px solid ${C.line}`,
+                  background: "#f0e6d2",
+                  aspectRatio: "4 / 3",
+                }}
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={g.src}
+                  alt=""
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                  onError={(e) => ((e.currentTarget as HTMLImageElement).style.opacity = "0.25")}
+                />
+                <button
+                  onClick={() => remove(g._id)}
+                  title="Remove photo"
+                  style={{
+                    position: "absolute",
+                    top: 7,
+                    right: 7,
+                    width: 26,
+                    height: 26,
+                    borderRadius: "50%",
+                    border: "none",
+                    background: "rgba(142,59,30,0.92)",
+                    color: "#fff",
+                    cursor: "pointer",
+                    fontSize: 16,
+                    lineHeight: 1,
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
     </div>
   );
 }

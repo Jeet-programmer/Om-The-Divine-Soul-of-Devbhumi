@@ -8,7 +8,7 @@ import RoomGallery from "@/components/RoomGallery";
 import ReserveButton from "@/components/ReserveButton";
 import SmartImage from "@/components/SmartImage";
 import { getRoomBySlug, listRooms } from "@/lib/rooms";
-import { formatINR } from "@/lib/data";
+import { displayRate, formatINR } from "@/lib/data";
 
 export const dynamic = "force-dynamic";
 
@@ -58,7 +58,7 @@ export default async function RoomPage({
         <main style={{ padding: "120px 7vw 90px", background: "#fbf5ea", minHeight: "100vh" }}>
           <div style={{ maxWidth: 1180, margin: "0 auto" }}>
             <Link
-              href="/#stays"
+              href={isRetreat ? "/#packages" : "/#stays"}
               style={{
                 display: "inline-block",
                 marginBottom: 26,
@@ -69,7 +69,7 @@ export default async function RoomPage({
                 textDecoration: "none",
               }}
             >
-              ← All stays
+              {isRetreat ? "← All packages" : "← All stays"}
             </Link>
 
             <div
@@ -115,7 +115,10 @@ export default async function RoomPage({
                   {room.name}
                 </h1>
 
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginTop: 14 }}>
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 14 }}>
+                  {displayRate(room).from && (
+                    <span style={{ fontSize: 15, color: "#9a8470" }}>from</span>
+                  )}
                   <span
                     style={{
                       fontFamily: "var(--font-cormorant), serif",
@@ -124,11 +127,9 @@ export default async function RoomPage({
                       color: "#c0651f",
                     }}
                   >
-                    {formatINR(room.price)}
+                    {formatINR(displayRate(room).price)}
                   </span>
-                  <span style={{ fontSize: 15, color: "#9a8470" }}>
-                    {isRetreat ? "per person" : "per night"}
-                  </span>
+                  <span style={{ fontSize: 15, color: "#9a8470" }}>per night</span>
                 </div>
 
                 <div
@@ -151,9 +152,7 @@ export default async function RoomPage({
                       background: room.available > 0 ? "#5f8a3f" : "#b5531f",
                     }}
                   />
-                  {room.available > 0
-                    ? `${room.available} ${isRetreat ? "seats available" : "available"}`
-                    : "Fully booked"}
+                  {room.available > 0 ? `${room.available} available` : "Fully booked"}
                   {isRetreat && room.nights ? ` · ${room.nights} nights` : ""}
                 </div>
 
@@ -181,6 +180,51 @@ export default async function RoomPage({
                 <p style={{ marginTop: 22, fontSize: 16.5, lineHeight: 1.75, color: "#5c4636" }}>
                   {room.blurb}
                 </p>
+
+                {room.mealPlans && room.mealPlans.length > 0 && (
+                  <div
+                    style={{
+                      marginTop: 22,
+                      background: "#fff",
+                      border: "1px solid rgba(192,146,47,0.3)",
+                      borderRadius: 14,
+                      padding: "16px 18px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontFamily: "var(--font-mukta), sans-serif",
+                        fontSize: 11.5,
+                        letterSpacing: ".14em",
+                        textTransform: "uppercase",
+                        color: "#9a8470",
+                        fontWeight: 700,
+                        marginBottom: 10,
+                      }}
+                    >
+                      Meal plans (per night)
+                    </div>
+                    <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                      {room.mealPlans.map((mp) => (
+                        <div
+                          key={mp.code}
+                          style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", gap: 12 }}
+                        >
+                          <span style={{ fontSize: 14, color: "#4a3422" }}>
+                            <strong style={{ color: "#2c1b12" }}>{mp.code}</strong>
+                            {mp.name ? ` — ${mp.name}` : ""}
+                          </span>
+                          <span style={{ fontFamily: "var(--font-cormorant), serif", fontWeight: 700, color: "#c0651f", whiteSpace: "nowrap" }}>
+                            {formatINR(mp.price)}
+                          </span>
+                        </div>
+                      ))}
+                    </div>
+                    <p style={{ margin: "10px 0 0", fontSize: 12, color: "#9a8470" }}>
+                      Choose your plan during booking — the rate shown is the total per room, per night.
+                    </p>
+                  </div>
+                )}
 
                 <div style={{ marginTop: 30 }}>
                   <ReserveButton
@@ -250,7 +294,7 @@ export default async function RoomPage({
                         <div style={{ marginTop: 4, fontSize: 14, color: "#c0651f", fontWeight: 600 }}>
                           {formatINR(r.price)}{" "}
                           <span style={{ color: "#9a8470", fontWeight: 400, fontSize: 12.5 }}>
-                            / {r.category === "retreat" ? "person" : "night"}
+                            / night
                           </span>
                         </div>
                       </div>

@@ -147,6 +147,7 @@ export default function Hero() {
 
       {/* floating Om */}
       <div
+        className="hero-om"
         style={{
           position: "absolute",
           top: "14vh",

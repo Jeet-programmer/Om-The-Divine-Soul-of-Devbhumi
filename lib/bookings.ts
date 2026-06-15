@@ -40,6 +40,7 @@ export async function createBooking(data: Partial<Booking>): Promise<Booking> {
     email: data.email || "",
     phone: data.phone || "",
     notes: data.notes || "",
+    ...(data.mealPlan ? { mealPlan: data.mealPlan } : {}),
     ...(data.couponCode ? { couponCode: data.couponCode } : {}),
     discount: Number(data.discount) || 0,
     status: "pending" as BookingStatus,

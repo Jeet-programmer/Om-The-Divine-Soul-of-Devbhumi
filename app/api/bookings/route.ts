@@ -58,10 +58,9 @@ export async function POST(req: Request) {
       razorpayPaymentId,
     });
 
-    // best-effort: decrement availability — rooms for stays, seats(guests) for retreats
+    // best-effort: decrement availability — rooms for stays, one package unit for retreats
     if (booking.roomSlug) {
-      const units =
-        booking.category === "stay" ? booking.rooms || 1 : booking.guests || 1;
+      const units = booking.category === "stay" ? booking.rooms || 1 : 1;
       await adjustAvailabilityBySlug(booking.roomSlug, -units).catch(() => {});
     }
     // best-effort: count coupon redemption

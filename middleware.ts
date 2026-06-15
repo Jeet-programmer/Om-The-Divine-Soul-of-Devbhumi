@@ -23,7 +23,8 @@ export function middleware(req: NextRequest) {
   // Guests must be able to do these without logging in.
   const publicPost =
     (pathname === "/api/bookings" && req.method === "POST") ||
-    (pathname === "/api/coupons/validate" && req.method === "POST");
+    (pathname === "/api/coupons/validate" && req.method === "POST") ||
+    (pathname === "/api/gallery" && req.method === "GET");
   if (publicPost) {
     return NextResponse.next();
   }
@@ -32,6 +33,7 @@ export function middleware(req: NextRequest) {
     pathname.startsWith("/api/rooms") ||
     pathname.startsWith("/api/bookings") ||
     pathname.startsWith("/api/coupons") ||
+    pathname.startsWith("/api/gallery") ||
     pathname === "/api/upload"
   ) {
     if (!authed) {
@@ -49,6 +51,7 @@ export const config = {
     "/api/rooms/:path*",
     "/api/bookings/:path*",
     "/api/coupons/:path*",
+    "/api/gallery/:path*",
     "/api/upload",
   ],
 };

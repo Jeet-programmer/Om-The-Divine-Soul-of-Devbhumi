@@ -22,14 +22,35 @@ export interface Room {
   extraBedAllowed: boolean;
   /** price per extra bed, per night */
   extraBedPrice: number;
+  /** optional meal/board plans; when present the guest picks one and its price
+   *  becomes the nightly rate. Empty = use `price` with no plan choice. */
+  mealPlans: MealPlan[];
   /** shown on the public site when true */
   active: boolean;
   order?: number;
 }
 
+/** A photo shown in the public homepage gallery. */
+export interface GalleryImage {
+  _id: string;
+  /** public path (/assets/…) or absolute URL */
+  src: string;
+  /** optional caption / alt text */
+  caption?: string;
+  order: number;
+  createdAt: string;
+}
+
 export type BookingStatus = "pending" | "confirmed" | "cancelled";
 export type PaymentStatus = "unpaid" | "partial" | "paid";
 export type PaymentType = "full" | "partial";
+
+/** A meal/board plan option for a stay (e.g. AP, MAP, CP, EP) with its nightly rate. */
+export interface MealPlan {
+  code: string;
+  name: string;
+  price: number;
+}
 
 export type CouponType = "percent" | "fixed";
 
@@ -71,6 +92,8 @@ export interface Booking {
   email: string;
   phone: string;
   notes?: string;
+  /** chosen meal plan label, if the room offered plans */
+  mealPlan?: string;
   couponCode?: string;
   discount: number;
   status: BookingStatus;

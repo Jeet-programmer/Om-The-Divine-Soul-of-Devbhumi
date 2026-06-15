@@ -1,8 +1,8 @@
 "use client";
 
-import { CSSProperties, useRef } from "react";
+import { CSSProperties, useRef, useState } from "react";
 import Link from "next/link";
-import { formatINR } from "@/lib/data";
+import { displayRate, formatINR } from "@/lib/data";
 import { useBooking } from "./BookingProvider";
 import SmartImage from "./SmartImage";
 import Logo from "./Logo";
@@ -61,7 +61,7 @@ export function About() {
   ];
 
   return (
-    <section id="about" style={{ padding: "120px 7vw", background: "#fbf5ea" }}>
+    <section id="about" className="sec" style={{ padding: "120px 7vw", background: "#fbf5ea" }}>
       <div style={{ maxWidth: 1180, margin: "0 auto" }}>
         <div
           className="grid-2"
@@ -72,8 +72,8 @@ export function About() {
             alignItems: "center",
           }}
         >
-          <div>
-            <div style={eyebrowWrap}>
+          <div className="about-text">
+            <div className="eyebrow" style={eyebrowWrap}>
               <span style={eyebrowLine} />
               <span style={eyebrowText}>Our Story</span>
             </div>
@@ -123,6 +123,7 @@ export function About() {
               }}
             />
             <div
+              className="about-badge"
               style={{
                 position: "absolute",
                 bottom: -26,
@@ -226,7 +227,7 @@ export function About() {
 /* ============================ SANCTUARY ============================ */
 export function Sanctuary() {
   return (
-    <section id="sanctuary" style={{ padding: "120px 7vw", background: "#f4e7d2" }}>
+    <section id="sanctuary" className="sec" style={{ padding: "120px 7vw", background: "#f4e7d2" }}>
       <div style={{ maxWidth: 1180, margin: "0 auto" }}>
         <div style={{ textAlign: "center", maxWidth: 680, margin: "0 auto 60px" }}>
           <div style={{ ...eyebrowWrap, justifyContent: "center" }}>
@@ -421,7 +422,7 @@ export function Experiences() {
   ];
 
   return (
-    <section id="experiences" style={{ padding: "120px 7vw", background: "#fbf5ea" }}>
+    <section id="experiences" className="sec" style={{ padding: "120px 7vw", background: "#fbf5ea" }}>
       <div style={{ maxWidth: 1180, margin: "0 auto" }}>
         <div style={{ textAlign: "center", maxWidth: 660, margin: "0 auto 56px" }}>
           <div style={{ ...eyebrowWrap, justifyContent: "center" }}>
@@ -519,7 +520,7 @@ export function Stays() {
     trackRef.current?.scrollBy({ left: dir * 364, behavior: "smooth" });
 
   return (
-    <section id="stays" style={{ padding: "120px 7vw", background: "#2c1b12" }}>
+    <section id="stays" className="sec" style={{ padding: "120px 7vw", background: "#2c1b12" }}>
       <div style={{ maxWidth: 1180, margin: "0 auto" }}>
         <div style={{ textAlign: "center", maxWidth: 660, margin: "0 auto 56px" }}>
           <div style={{ ...eyebrowWrap, justifyContent: "center" }}>
@@ -708,6 +709,11 @@ export function Stays() {
                   }}
                 >
                   <div>
+                    {displayRate(room).from && (
+                      <span style={{ fontFamily: "var(--font-mukta), sans-serif", fontSize: 12, color: "rgba(251,240,220,0.55)", marginRight: 5 }}>
+                        from
+                      </span>
+                    )}
                     <span
                       style={{
                         fontFamily: "var(--font-cormorant), serif",
@@ -716,7 +722,7 @@ export function Stays() {
                         color: "#fbf0dc",
                       }}
                     >
-                      {formatINR(room.price)}
+                      {formatINR(displayRate(room).price)}
                     </span>
                     <span
                       style={{
@@ -749,6 +755,248 @@ export function Stays() {
                 </div>
               </div>
             </div>
+              );
+            })}
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+/* ============================ PACKAGES (RETREATS) ============================ */
+export function Packages() {
+  const { retreats, openRetreatWith } = useBooking();
+  const trackRef = useRef<HTMLDivElement>(null);
+  const scrollBy = (dir: number) =>
+    trackRef.current?.scrollBy({ left: dir * 364, behavior: "smooth" });
+
+  if (retreats.length === 0) return null;
+
+  return (
+    <section id="packages" style={{ padding: "120px 7vw", background: "#f4e7d2" }}>
+      <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+        <div style={{ textAlign: "center", maxWidth: 720, margin: "0 auto 56px" }}>
+          <div style={{ ...eyebrowWrap, justifyContent: "center" }}>
+            <span style={eyebrowLine} />
+            <span style={eyebrowText}>Retreat &amp; Wellness Packages</span>
+            <span style={eyebrowLine} />
+          </div>
+          <h2
+            style={{
+              fontWeight: 600,
+              fontSize: "clamp(32px,4vw,50px)",
+              lineHeight: 1.12,
+              color: "#2c1b12",
+              letterSpacing: "-0.4px",
+            }}
+          >
+            Stay where the snow peaks feel close enough to touch
+          </h2>
+          <p style={{ marginTop: 18, fontSize: 16, lineHeight: 1.7, color: "#5c4636" }}>
+            Every package includes luxury cottage accommodation, three Satvik meals daily with fruit
+            and milk, the open mountain-view yoga &amp; meditation space and yoga hall, chanting
+            sound support, and a free sky-watching observatory session.
+          </p>
+        </div>
+
+        <div style={{ position: "relative" }}>
+          <button
+            aria-label="Previous"
+            onClick={() => scrollBy(-1)}
+            className="carousel-btn"
+            style={{ ...carouselBtnStyle, left: -8 }}
+          >
+            ‹
+          </button>
+          <button
+            aria-label="Next"
+            onClick={() => scrollBy(1)}
+            className="carousel-btn"
+            style={{ ...carouselBtnStyle, right: -8 }}
+          >
+            ›
+          </button>
+
+          <div
+            ref={trackRef}
+            className="hcarousel"
+            style={{
+              display: "flex",
+              gap: 24,
+              justifyContent: "safe center",
+              overflowX: "auto",
+              scrollSnapType: "x mandatory",
+              paddingBottom: 6,
+            }}
+          >
+            {retreats.map((room) => {
+              const soldOut = room.available <= 0;
+              return (
+                <div
+                  key={room.slug}
+                  className="hov-lift-5"
+                  style={{
+                    flex: "0 0 340px",
+                    maxWidth: "85vw",
+                    scrollSnapAlign: "start",
+                    background: "#fff",
+                    borderRadius: 18,
+                    overflow: "hidden",
+                    border: "1px solid rgba(192,146,47,0.28)",
+                    boxShadow: "0 10px 30px rgba(44,27,18,0.07)",
+                    display: "flex",
+                    flexDirection: "column",
+                  }}
+                >
+                  <Link
+                    href={`/rooms/${room.slug}`}
+                    style={{ position: "relative", display: "block", lineHeight: 0 }}
+                  >
+                    <SmartImage
+                      src={room.images[0] || ""}
+                      alt={room.name}
+                      placeholder={`[ ${room.name} ]`}
+                      labelAlign="start"
+                      style={{ height: 200, width: "100%" }}
+                    />
+                    {room.images.length > 1 && (
+                      <span
+                        style={{
+                          position: "absolute",
+                          bottom: 12,
+                          left: 12,
+                          fontFamily: "var(--font-mukta), sans-serif",
+                          fontSize: 11,
+                          fontWeight: 600,
+                          padding: "4px 10px",
+                          borderRadius: 999,
+                          color: "#fff",
+                          background: "rgba(28,14,8,0.7)",
+                          backdropFilter: "blur(4px)",
+                        }}
+                      >
+                        📷 {room.images.length}
+                      </span>
+                    )}
+                    <span
+                      style={{
+                        position: "absolute",
+                        top: 12,
+                        right: 12,
+                        fontFamily: "var(--font-mukta), sans-serif",
+                        fontSize: 11,
+                        fontWeight: 600,
+                        letterSpacing: ".04em",
+                        padding: "5px 11px",
+                        borderRadius: 999,
+                        color: "#fff",
+                        background: soldOut ? "rgba(142,59,30,0.92)" : "rgba(44,27,18,0.78)",
+                        backdropFilter: "blur(4px)",
+                      }}
+                    >
+                      {soldOut ? "Fully booked" : `${room.available} available`}
+                    </span>
+                  </Link>
+                  <div style={{ padding: "26px 26px 28px", display: "flex", flexDirection: "column", flex: 1 }}>
+                    <div style={{ display: "flex", gap: 8, flexWrap: "wrap", marginBottom: 14 }}>
+                      {room.tags.map((t) => (
+                        <span
+                          key={t}
+                          style={{
+                            fontFamily: "var(--font-mukta), sans-serif",
+                            fontSize: 11,
+                            letterSpacing: ".06em",
+                            color: "#9a6b2e",
+                            background: "rgba(217,169,62,0.16)",
+                            padding: "5px 11px",
+                            borderRadius: 999,
+                            fontWeight: 500,
+                          }}
+                        >
+                          {t}
+                        </span>
+                      ))}
+                    </div>
+                    <Link href={`/rooms/${room.slug}`} style={{ textDecoration: "none" }}>
+                      <h4 style={{ fontSize: 24, fontWeight: 600, color: "#2c1b12" }}>{room.name}</h4>
+                    </Link>
+                    <p
+                      style={{
+                        marginTop: 8,
+                        fontSize: 14.5,
+                        lineHeight: 1.62,
+                        color: "#6b5340",
+                        flex: 1,
+                      }}
+                    >
+                      {room.blurb}
+                    </p>
+                    <Link
+                      href={`/rooms/${room.slug}`}
+                      style={{
+                        marginTop: 12,
+                        fontFamily: "var(--font-mukta), sans-serif",
+                        fontSize: 13.5,
+                        fontWeight: 600,
+                        color: "#c0651f",
+                        textDecoration: "none",
+                      }}
+                    >
+                      View details &amp; gallery →
+                    </Link>
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "flex-end",
+                        justifyContent: "space-between",
+                        marginTop: 22,
+                        paddingTop: 20,
+                        borderTop: "1px solid rgba(192,146,47,0.22)",
+                      }}
+                    >
+                      <div>
+                        <span
+                          style={{
+                            fontFamily: "var(--font-cormorant), serif",
+                            fontSize: 30,
+                            fontWeight: 700,
+                            color: "#c0651f",
+                          }}
+                        >
+                          {formatINR(room.price)}
+                        </span>
+                        <span
+                          style={{
+                            fontFamily: "var(--font-mukta), sans-serif",
+                            fontSize: 13,
+                            color: "#9a8470",
+                          }}
+                        >
+                          {" "}
+                          / night
+                        </span>
+                      </div>
+                      <button
+                        onClick={() => !soldOut && openRetreatWith(room.slug)}
+                        disabled={soldOut}
+                        className={soldOut ? undefined : "btn-reserve"}
+                        style={{
+                          border: "none",
+                          cursor: soldOut ? "not-allowed" : "pointer",
+                          color: "#fff",
+                          background: soldOut ? "rgba(217,119,43,0.4)" : undefined,
+                          fontSize: 13.5,
+                          fontWeight: 600,
+                          padding: "10px 20px",
+                          borderRadius: 999,
+                        }}
+                      >
+                        {soldOut ? "Sold out" : "Reserve"}
+                      </button>
+                    </div>
+                  </div>
+                </div>
               );
             })}
           </div>
@@ -795,7 +1043,7 @@ export function Venue() {
     },
   ];
   return (
-    <section id="venue" style={{ padding: "120px 7vw", background: "#fbf5ea" }}>
+    <section id="venue" className="sec" style={{ padding: "120px 7vw", background: "#fbf5ea" }}>
       <div
         className="grid-2"
         style={{
@@ -809,7 +1057,7 @@ export function Venue() {
       >
         <div style={{ position: "relative" }}>
           <SmartImage
-            src="/assets/venue/venue.jpg"
+            src="/assets/gallery/475759876.jpg"
             alt="Vashishtha Bhawan venue"
             placeholder="[ Vashishtha Bhawan venue ]"
             labelAlign="start"
@@ -823,8 +1071,8 @@ export function Venue() {
             }}
           />
         </div>
-        <div>
-          <div style={eyebrowWrap}>
+        <div className="venue-text">
+          <div className="eyebrow" style={eyebrowWrap}>
             <span style={eyebrowLine} />
             <span style={eyebrowText}>Organize an Event</span>
           </div>
@@ -844,7 +1092,7 @@ export function Venue() {
             comfort — offering panoramic, full-length views of Panchkedar, Nilkantha and the
             surrounding sacred peaks.
           </p>
-          <div style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 26 }}>
+          <div className="vpoints" style={{ display: "flex", flexDirection: "column", gap: 14, marginTop: 26 }}>
             {points.map((pt) => (
               <div key={pt.strong} style={{ display: "flex", gap: 14, alignItems: "flex-start" }}>
                 <span style={{ color: "#d9772b", fontSize: 18, lineHeight: 1.4 }}>✦</span>
@@ -876,11 +1124,164 @@ export function Venue() {
   );
 }
 
+/* ============================ GALLERY ============================ */
+export function Gallery({ images }: { images: string[] }) {
+  const [active, setActive] = useState<number | null>(null);
+
+  if (!images.length) return null;
+
+  const close = () => setActive(null);
+  const step = (dir: number) =>
+    setActive((i) => (i == null ? null : (i + dir + images.length) % images.length));
+
+  return (
+    <section id="gallery" className="sec" style={{ padding: "120px 7vw", background: "#f4e7d2" }}>
+      <div style={{ maxWidth: 1180, margin: "0 auto" }}>
+        <div style={{ textAlign: "center", maxWidth: 680, margin: "0 auto 56px" }}>
+          <div style={{ ...eyebrowWrap, justifyContent: "center" }}>
+            <span style={eyebrowLine} />
+            <span style={eyebrowText}>A Glimpse of the Divine</span>
+            <span style={eyebrowLine} />
+          </div>
+          <h2
+            style={{
+              fontWeight: 600,
+              fontSize: "clamp(32px,4vw,50px)",
+              lineHeight: 1.12,
+              color: "#2c1b12",
+              letterSpacing: "-0.4px",
+            }}
+          >
+            Moments from the mountains
+          </h2>
+          <p style={{ marginTop: 20, fontSize: 17, lineHeight: 1.75, color: "#5c4636" }}>
+            Snapshots of the cottages, the Satvik kitchen, the gardens and the snow peaks that
+            surround OM — The Divine Soul of Devbhumi.
+          </p>
+        </div>
+
+        <div
+          className="gallery-grid"
+          style={{
+            display: "grid",
+            gridTemplateColumns: "repeat(4,1fr)",
+            gridAutoRows: 180,
+            gap: 14,
+          }}
+        >
+          {images.map((src, i) => (
+            <button
+              key={`${src}-${i}`}
+              onClick={() => setActive(i)}
+              className="hov-lift-5"
+              aria-label={`Open photo ${i + 1}`}
+              style={{
+                border: "none",
+                padding: 0,
+                cursor: "pointer",
+                borderRadius: 14,
+                overflow: "hidden",
+                // every 6th tile spans two rows for a gentle mosaic rhythm
+                gridRow: i % 6 === 0 ? "span 2" : "span 1",
+                boxShadow: "0 8px 24px rgba(44,27,18,0.08)",
+                background: "#e4d7bd",
+              }}
+            >
+              <SmartImage
+                src={src}
+                alt={`OM Devbhumi gallery photo ${i + 1}`}
+                placeholder="[ photo ]"
+                labelAlign="center"
+                style={{ width: "100%", height: "100%" }}
+              />
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {/* lightbox */}
+      {active != null && (
+        <div
+          onClick={close}
+          style={{
+            position: "fixed",
+            inset: 0,
+            zIndex: 1000,
+            background: "rgba(20,10,5,0.92)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            padding: "5vw",
+          }}
+        >
+          <button
+            onClick={close}
+            aria-label="Close"
+            style={{ ...lightboxBtn, top: 22, right: 22, position: "fixed" }}
+          >
+            ×
+          </button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              step(-1);
+            }}
+            aria-label="Previous"
+            style={{ ...lightboxBtn, left: 16, position: "fixed", top: "50%", transform: "translateY(-50%)" }}
+          >
+            ‹
+          </button>
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src={images[active]}
+            alt=""
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              maxWidth: "100%",
+              maxHeight: "90vh",
+              objectFit: "contain",
+              borderRadius: 12,
+              boxShadow: "0 20px 60px rgba(0,0,0,0.5)",
+            }}
+          />
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              step(1);
+            }}
+            aria-label="Next"
+            style={{ ...lightboxBtn, right: 16, position: "fixed", top: "50%", transform: "translateY(-50%)" }}
+          >
+            ›
+          </button>
+        </div>
+      )}
+    </section>
+  );
+}
+
+const lightboxBtn: CSSProperties = {
+  zIndex: 1001,
+  width: 46,
+  height: 46,
+  borderRadius: "50%",
+  border: "none",
+  background: "rgba(217,119,43,0.9)",
+  color: "#fff",
+  fontSize: 26,
+  lineHeight: 1,
+  cursor: "pointer",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  boxShadow: "0 6px 18px rgba(0,0,0,0.4)",
+};
+
 /* ============================ FOOTER ============================ */
 export function Footer() {
   const { openStay } = useBooking();
   return (
-    <section id="contact" style={{ background: "#1c0e08", padding: "96px 7vw 48px" }}>
+    <section id="contact" className="sec-footer" style={{ background: "#1c0e08", padding: "96px 7vw 48px" }}>
       <div style={{ maxWidth: 1180, margin: "0 auto" }}>
         <div
           className="footer-grid"

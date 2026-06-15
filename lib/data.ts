@@ -17,8 +17,8 @@ export interface Stay {
 export interface Retreat {
   id: string;
   name: string;
+  /** flat package rate per night (party-size tier, not per person) */
   price: number;
-  nights: number;
   image: string;
   ph: string;
   tags: string[];
@@ -58,50 +58,154 @@ export const STAYS: Stay[] = [
   },
 ];
 
+/**
+ * Retreat & wellness packages. Each is a flat nightly rate for a party-size
+ * tier (not per person) and includes luxury cottage accommodation with all
+ * modern facilities, 3 Satvik meals daily with fruit and milk, the open
+ * mountain-view yoga & meditation space and yoga hall, chanting sound support,
+ * and a free sky-watching observatory session.
+ */
 export const RETREATS: Retreat[] = [
   {
-    id: "dawn",
-    name: "Dawn Yoga & Meditation Retreat",
-    price: 18500,
-    nights: 3,
-    image: "/assets/stays/dawn.jpg",
-    ph: "[ dawn yoga retreat ]",
-    tags: ["3 nights", "Daily asana & pranayama", "Satvik full-board"],
+    id: "individual",
+    name: "Individual Retreat Package",
+    price: 5000,
+    image: "/assets/stays/glass.jpg",
+    ph: "[ individual luxury cottage ]",
+    tags: ["For 2 persons", "Per night", "Luxury cottage", "Chanting support"],
     blurb:
-      "Three days of sunrise yoga, guided meditation and Satvik nourishment in the lap of the Himalayas.",
+      "A luxury cottage with all modern facilities for two. Three Satvik meals daily with fresh fruit and milk, the open mountain-view yoga & meditation space and yoga hall, and chanting sound support. Free sky-watching observatory session included.",
   },
   {
-    id: "sanatan",
-    name: "7-Day Sanatan Wellness Immersion",
-    price: 42000,
-    nights: 7,
-    image: "/assets/stays/sanatan.jpg",
-    ph: "[ sanatan immersion ]",
-    tags: ["7 nights", "Vedic philosophy", "Sound & breathwork"],
+    id: "family",
+    name: "Family Retreat Package",
+    price: 8000,
+    image: "/assets/stays/panchkedar.jpg",
+    ph: "[ family cottage retreat ]",
+    tags: ["3 adults + 1 child", "Per night", "Family cottage"],
     blurb:
-      "A weeklong immersion into yoga, ancient Sanatan wisdom, sound healing and deep rest.",
+      "The same luxury cottage experience sized for a family of three plus one child — three Satvik meals with fruit and milk, mountain-view yoga & meditation, the yoga hall and chanting support. Free sky-watching observatory session included.",
   },
+  {
+    id: "group-small",
+    name: "Group Package · 5–7 Persons",
+    price: 10000,
+    image: "/assets/stays/heritage.jpg",
+    ph: "[ small group retreat ]",
+    tags: ["5–7 persons", "Per night", "Group stay"],
+    blurb:
+      "A retreat package for a small group of five to seven. Comfortable accommodation, three Satvik meals daily with fruit and milk, yoga & meditation in the open mountain-view space and hall, and chanting support. Free sky-watching observatory session included.",
+  },
+  {
+    id: "group-medium",
+    name: "Group Package · 8–10 Persons",
+    price: 15000,
+    image: "/assets/gallery/cottage.jpg",
+    ph: "[ medium group retreat ]",
+    tags: ["8–10 persons", "Per night", "Group stay"],
+    blurb:
+      "A retreat package for a group of eight to ten, with all facilities — accommodation, three Satvik meals with fruit and milk, open mountain-view yoga & meditation, the yoga hall and chanting support. Free sky-watching observatory session included.",
+  },
+  {
+    id: "group-large",
+    name: "Group Package · 11–14 Persons",
+    price: 20000,
+    image: "/assets/gallery/amenities.jpg",
+    ph: "[ large group retreat ]",
+    tags: ["11–14 persons", "Per night", "Group stay"],
+    blurb:
+      "A retreat package for a larger group of eleven to fourteen — full accommodation, three Satvik meals daily with fruit and milk, yoga & meditation space and hall, and chanting support. Free sky-watching observatory session included.",
+  },
+  {
+    id: "wellness-camp",
+    name: "Complete Yoga & Wellness Retreat Camp",
+    price: 25000,
+    image: "/assets/stays/dawn.jpg",
+    ph: "[ yoga & wellness camp ]",
+    tags: ["15–20 persons", "Per night", "All accessories", "Creative support"],
+    blurb:
+      "Our complete yoga and wellness retreat camp for fifteen to twenty, with all accessories and creative support. Accommodation, three Satvik meals with fruit and milk, open mountain-view yoga & meditation, the yoga hall and chanting support — and a free sky-watching observatory session for all.",
+  },
+];
+
+/**
+ * Every property photo currently sitting in /public/assets — used to seed the
+ * gallery collection the first time, and as a graceful fallback if the DB is
+ * unreachable. Paths with spaces are URL-encoded so they load directly as an
+ * <img> src. (Branding/logo and design-reference folders are intentionally
+ * excluded.)
+ */
+export const GALLERY_SEED: string[] = [
+  "/assets/hero/hero.jpg",
+  "/assets/gallery/about.jpg",
+  "/assets/gallery/cottage.jpg",
+  "/assets/gallery/garden.jpg",
+  "/assets/gallery/heritage.jpg",
+  "/assets/gallery/amenities.jpg",
+  "/assets/gallery/satvik.jpg",
+  "/assets/gallery/361633390.jpg",
+  "/assets/gallery/475759876.jpg",
+  "/assets/gallery/475759911.jpg",
+  "/assets/gallery/475759914.jpg",
+  "/assets/gallery/475759914%20(1).jpg",
+  "/assets/gallery/672314761.jpg",
+  "/assets/gallery/672315910.jpg",
+  "/assets/gallery/859538672.jpg",
+  "/assets/gallery/859539110.jpg",
+  "/assets/gallery/6c258e8193978533815ae6de34110910.jpg",
+  "/assets/gallery/7d0c9f3ef3beb4a14d749ccb6586a095.jpg",
+  "/assets/gallery/images.jpeg",
+  "/assets/gallery/images%20(1).jpeg",
+  "/assets/stays/glass.jpg",
+  "/assets/stays/heritage.jpg",
+  "/assets/stays/panchkedar.jpg",
+  "/assets/stays/dawn.jpg",
+  "/assets/stays/sanatan.jpg",
+  "/assets/stays/361633410.jpg",
+  "/assets/stays/467640664.jpg",
+  "/assets/stays/672313444.jpg",
+  "/assets/stays/672321415.jpg",
+  "/assets/stays/672321415%20(1).jpg",
+  "/assets/venue/venue.jpg",
 ];
 
 export const formatINR = (n: number): string =>
   "₹" + Number(n).toLocaleString("en-IN");
+
+/** The price to show for a room: lowest meal-plan price ("from …") if it has
+ *  plans, otherwise its base price. */
+export function displayRate(room: Room): { price: number; from: boolean } {
+  const plans = room.mealPlans || [];
+  if (plans.length > 0) {
+    return { price: Math.min(...plans.map((p) => p.price)), from: true };
+  }
+  return { price: room.price, from: false };
+}
 
 /** Default stock per offering when first seeding the database */
 export const DEFAULT_QUANTITY: Record<string, number> = {
   glass: 5,
   heritage: 8,
   panchkedar: 3,
-  dawn: 12,
-  sanatan: 8,
+  individual: 6,
+  family: 4,
+  "group-small": 3,
+  "group-medium": 2,
+  "group-large": 2,
+  "wellness-camp": 1,
 };
 
-/** Guests one room sleeps */
+/** Guests one room sleeps (stays) / max party for a package (retreats) */
 export const DEFAULT_CAPACITY: Record<string, number> = {
   glass: 2,
   heritage: 2,
   panchkedar: 3,
-  dawn: 1,
-  sanatan: 1,
+  individual: 2,
+  family: 4,
+  "group-small": 7,
+  "group-medium": 10,
+  "group-large": 14,
+  "wellness-camp": 20,
 };
 
 /** Extra-bed config per offering */
@@ -109,8 +213,12 @@ export const DEFAULT_EXTRA_BED: Record<string, { allowed: boolean; price: number
   glass: { allowed: true, price: 1200 },
   heritage: { allowed: true, price: 1000 },
   panchkedar: { allowed: true, price: 1500 },
-  dawn: { allowed: false, price: 0 },
-  sanatan: { allowed: false, price: 0 },
+  individual: { allowed: false, price: 0 },
+  family: { allowed: false, price: 0 },
+  "group-small": { allowed: false, price: 0 },
+  "group-medium": { allowed: false, price: 0 },
+  "group-large": { allowed: false, price: 0 },
+  "wellness-camp": { allowed: false, price: 0 },
 };
 
 /**
@@ -132,6 +240,7 @@ export function fallbackRooms(): Room[] {
     capacity: DEFAULT_CAPACITY[s.id] ?? 2,
     extraBedAllowed: DEFAULT_EXTRA_BED[s.id]?.allowed ?? false,
     extraBedPrice: DEFAULT_EXTRA_BED[s.id]?.price ?? 0,
+    mealPlans: [],
     active: true,
     order: i,
   }));
@@ -141,7 +250,6 @@ export function fallbackRooms(): Room[] {
     name: r.name,
     category: "retreat",
     price: r.price,
-    nights: r.nights,
     tags: r.tags,
     blurb: r.blurb,
     images: [r.image],
@@ -150,6 +258,7 @@ export function fallbackRooms(): Room[] {
     capacity: DEFAULT_CAPACITY[r.id] ?? 1,
     extraBedAllowed: DEFAULT_EXTRA_BED[r.id]?.allowed ?? false,
     extraBedPrice: DEFAULT_EXTRA_BED[r.id]?.price ?? 0,
+    mealPlans: [],
     active: true,
     order: STAYS.length + i,
   }));

@@ -7,7 +7,8 @@ const COLL = "rooms";
 
 function serialize(doc: WithId<Document>): Room {
   const { _id, ...rest } = doc;
-  return { _id: _id.toString(), ...(rest as Omit<Room, "_id">) };
+  const r = rest as Omit<Room, "_id">;
+  return { _id: _id.toString(), ...r, mealPlans: r.mealPlans || [] };
 }
 
 /** Insert the seed offerings the first time the collection is empty. */
@@ -29,6 +30,7 @@ export async function seedRooms(): Promise<void> {
     capacity: DEFAULT_CAPACITY[s.id] ?? 2,
     extraBedAllowed: DEFAULT_EXTRA_BED[s.id]?.allowed ?? false,
     extraBedPrice: DEFAULT_EXTRA_BED[s.id]?.price ?? 0,
+    mealPlans: [],
     active: true,
     order: i,
   }));
@@ -37,7 +39,6 @@ export async function seedRooms(): Promise<void> {
     name: r.name,
     category: "retreat" as Category,
     price: r.price,
-    nights: r.nights,
     tags: r.tags,
     blurb: r.blurb,
     images: [r.image],
@@ -46,6 +47,7 @@ export async function seedRooms(): Promise<void> {
     capacity: DEFAULT_CAPACITY[r.id] ?? 1,
     extraBedAllowed: DEFAULT_EXTRA_BED[r.id]?.allowed ?? false,
     extraBedPrice: DEFAULT_EXTRA_BED[r.id]?.price ?? 0,
+    mealPlans: [],
     active: true,
     order: STAYS.length + i,
   }));
@@ -97,6 +99,7 @@ export async function createRoom(data: Partial<Room>): Promise<Room> {
     capacity: Number(data.capacity) || 2,
     extraBedAllowed: data.extraBedAllowed === true,
     extraBedPrice: Number(data.extraBedPrice) || 0,
+    mealPlans: data.mealPlans || [],
     active: data.active !== false,
     order: 999,
   };
@@ -116,6 +119,7 @@ const EDITABLE: (keyof Room)[] = [
   "capacity",
   "extraBedAllowed",
   "extraBedPrice",
+  "mealPlans",
   "active",
   "images",
   "slug",

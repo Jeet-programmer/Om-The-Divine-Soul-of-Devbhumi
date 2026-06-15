@@ -8,7 +8,9 @@ const navItems = [
   { href: "/#sanctuary", label: "Sanctuary" },
   { href: "/#experiences", label: "Experiences" },
   { href: "/#stays", label: "Stays" },
+  { href: "/#packages", label: "Packages" },
   { href: "/#venue", label: "Venue" },
+  { href: "/#gallery", label: "Gallery" },
   { href: "/#contact", label: "Contact" },
 ];
 

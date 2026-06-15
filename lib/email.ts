@@ -98,6 +98,7 @@ export function renderBookingEmail(b: Booking, baseUrl?: string): string {
   const detailRows = [
     row("Booking reference", b.ref),
     row("Stay", b.roomName || "—"),
+    b.mealPlan ? row("Meal plan", b.mealPlan) : "",
     b.checkIn ? row("Dates", `${b.checkIn}${b.checkOut ? " → " + b.checkOut : ""}`) : "",
     row("Guests", String(b.guests)),
     b.rooms ? row("Rooms", String(b.rooms)) : "",

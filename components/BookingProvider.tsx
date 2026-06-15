@@ -9,7 +9,7 @@ import {
   useState,
   CSSProperties,
 } from "react";
-import { formatINR } from "@/lib/data";
+import { displayRate, formatINR } from "@/lib/data";
 import { Category, Room } from "@/lib/types";
 import Logo from "./Logo";
 
@@ -124,6 +124,7 @@ export default function BookingProvider({
   const [submitError, setSubmitError] = useState("");
   const [roomCount, setRoomCount] = useState(1);
   const [extraBeds, setExtraBeds] = useState(0);
+  const [mealPlanCode, setMealPlanCode] = useState("");
   const [paymentType, setPaymentType] = useState<"full" | "partial" | "later">("full");
   const [couponInput, setCouponInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
@@ -150,6 +151,7 @@ export default function BookingProvider({
     setGuests(prefill?.guests ?? 2);
     setRoomCount(1);
     setExtraBeds(0);
+    setMealPlanCode("");
     setPaymentType("full");
     setCouponInput("");
     setAppliedCoupon(null);
@@ -215,14 +217,14 @@ export default function BookingProvider({
   const list = isRetreat ? retreats : stays;
   const selected = list.find((x) => x.slug === selectedId) || null;
 
+  // both stays and retreat packages are priced per night, from the chosen dates
   const nights = useMemo(() => {
-    if (isRetreat) return selected?.nights ?? 0;
     if (checkIn && checkOut) {
       const d = (new Date(checkOut).getTime() - new Date(checkIn).getTime()) / 86400000;
       return d > 0 ? Math.round(d) : 0;
     }
     return 0;
-  }, [isRetreat, selected, checkIn, checkOut]);
+  }, [checkIn, checkOut]);
 
   // suggested rooms for a party (= ceil(guests / capacity)); the user can adjust
   const suggestedRooms = useMemo(() => {
@@ -238,8 +240,15 @@ export default function BookingProvider({
     const cap = Math.max(1, selected.available);
     setRoomCount(Math.min(Math.max(1, suggestedRooms), cap));
     setExtraBeds(0);
+    // default to the first meal plan when the room offers them
+    setMealPlanCode((selected.mealPlans && selected.mealPlans[0]?.code) || "");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isRetreat, selectedId, suggestedRooms]);
+
+  // meal-plan-driven nightly rate (falls back to base price)
+  const mealPlans = (!isRetreat && selected?.mealPlans) || [];
+  const selectedPlan = mealPlans.find((p) => p.code === mealPlanCode) || null;
+  const roomRate = selectedPlan ? selectedPlan.price : selected?.price || 0;
 
   const maxRooms = selected ? Math.max(1, selected.available) : 1;
   // one extra bed per room max, only when the room type allows it
@@ -263,26 +272,15 @@ export default function BookingProvider({
 
   const total = useMemo(() => {
     if (!selected) return 0;
-    if (isRetreat) return selected.price * guests;
     const n = nights || 1;
+    // retreat packages are a flat nightly rate for the whole party
+    if (isRetreat) return selected.price * n;
     const bedPrice = selected.extraBedAllowed ? selected.extraBedPrice : 0;
-    return selected.price * roomCount * n + effectiveExtraBeds * bedPrice * n;
-  }, [selected, isRetreat, guests, nights, roomCount, effectiveExtraBeds]);
+    return roomRate * roomCount * n + effectiveExtraBeds * bedPrice * n;
+  }, [selected, isRetreat, nights, roomCount, effectiveExtraBeds, roomRate]);
 
   const datesLabel = useMemo(() => {
     const opt: Intl.DateTimeFormatOptions = { month: "short", day: "numeric" };
-    if (isRetreat) {
-      if (!checkIn) return "Dates flexible";
-      const start = new Date(checkIn);
-      const r = selected;
-      const end = r?.nights
-        ? new Date(start.getTime() + r.nights * 86400000)
-        : null;
-      return (
-        start.toLocaleDateString("en-IN", opt) +
-        (end ? " – " + end.toLocaleDateString("en-IN", opt) : "")
-      );
-    }
     if (checkIn && checkOut) {
       return (
         new Date(checkIn).toLocaleDateString("en-IN", opt) +
@@ -291,27 +289,23 @@ export default function BookingProvider({
       );
     }
     return "Select dates";
-  }, [isRetreat, checkIn, checkOut, selected]);
+  }, [checkIn, checkOut]);
 
   // ----- step actions -----
   const next = () => {
     if (step === 1) {
-      if (isStay) {
-        if (!checkIn || !checkOut)
-          return setStep1Error("Please choose your check-in and check-out dates.");
-        if (nights <= 0) return setStep1Error("Check-out must be after check-in.");
-      } else {
-        if (!checkIn) return setStep1Error("Please choose your preferred start date.");
-      }
+      if (!checkIn || !checkOut)
+        return setStep1Error("Please choose your check-in and check-out dates.");
+      if (nights <= 0) return setStep1Error("Check-out must be after check-in.");
       setStep1Error("");
       setStep(2);
       return;
     }
     if (step === 2) {
       if (!selectedId) return setStep2Error("Please select an option to continue.");
-      if (selected && isRetreat && selected.available < guests) {
+      if (selected && isRetreat && guests > selected.capacity) {
         return setStep2Error(
-          `Only ${selected.available} seats remain on this retreat for your party of ${guests}.`
+          `This package is designed for up to ${selected.capacity} guests — please choose a larger package for your party of ${guests}.`
         );
       }
       setStep2Error("");
@@ -389,12 +383,7 @@ export default function BookingProvider({
     setSubmitting(true);
 
     const ref = "OM-" + Math.random().toString(36).slice(2, 7).toUpperCase();
-    const computedCheckOut =
-      isRetreat && checkIn && selected?.nights
-        ? new Date(new Date(checkIn).getTime() + selected.nights * 86400000)
-            .toISOString()
-            .slice(0, 10)
-        : checkOut;
+    const computedCheckOut = checkOut;
 
     const bookingPayload = {
       ref,
@@ -411,6 +400,7 @@ export default function BookingProvider({
       total: payableTotal,
       discount,
       couponCode: appliedCoupon?.code || "",
+      mealPlan: selectedPlan ? `${selectedPlan.code} — ${selectedPlan.name}` : "",
       name: name.trim(),
       email: email.trim(),
       phone: phone.trim(),
@@ -594,6 +584,10 @@ export default function BookingProvider({
           rooms={roomCount}
           maxRooms={maxRooms}
           occupancy={occupancy}
+          mealPlans={mealPlans}
+          mealPlanCode={mealPlanCode}
+          onMealPlan={setMealPlanCode}
+          roomRate={roomRate}
           extraBeds={effectiveExtraBeds}
           maxExtraBeds={maxExtraBeds}
           paymentType={paymentType}
@@ -636,7 +630,7 @@ export default function BookingProvider({
             setCheckOut(v);
             setStep1Error("");
           }}
-          incGuests={() => setGuests((g) => Math.min(12, g + 1))}
+          incGuests={() => setGuests((g) => Math.min(20, g + 1))}
           decGuests={() => setGuests((g) => Math.max(1, g - 1))}
           incRooms={incRooms}
           decRooms={decRooms}
@@ -700,6 +694,10 @@ interface ModalProps {
   rooms: number;
   maxRooms: number;
   occupancy: number;
+  mealPlans: { code: string; name: string; price: number }[];
+  mealPlanCode: string;
+  onMealPlan: (code: string) => void;
+  roomRate: number;
   extraBeds: number;
   maxExtraBeds: number;
   paymentType: "full" | "partial" | "later";
@@ -965,7 +963,7 @@ function BookingModal(p: ModalProps) {
                 }}
               >
                 <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                  <span style={uppercaseLabel}>{p.isRetreat ? "Preferred start" : "Check-in"}</span>
+                  <span style={uppercaseLabel}>Check-in</span>
                   <input
                     type="date"
                     value={p.checkIn}
@@ -974,34 +972,16 @@ function BookingModal(p: ModalProps) {
                     style={inputBase}
                   />
                 </label>
-                {p.isStay ? (
-                  <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                    <span style={uppercaseLabel}>Check-out</span>
-                    <input
-                      type="date"
-                      value={p.checkOut}
-                      min={p.checkIn || todayStr()}
-                      onChange={(e) => p.setCheckOut(e.target.value)}
-                      style={inputBase}
-                    />
-                  </label>
-                ) : (
-                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                    <span style={uppercaseLabel}>Duration</span>
-                    <div
-                      style={{
-                        border: "1.5px solid rgba(44,27,18,0.12)",
-                        background: "#f4e7d2",
-                        borderRadius: 11,
-                        padding: "13px 14px",
-                        fontSize: 14.5,
-                        color: "#6b5340",
-                      }}
-                    >
-                      Set by the retreat you choose
-                    </div>
-                  </div>
-                )}
+                <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  <span style={uppercaseLabel}>Check-out</span>
+                  <input
+                    type="date"
+                    value={p.checkOut}
+                    min={p.checkIn || todayStr()}
+                    onChange={(e) => p.setCheckOut(e.target.value)}
+                    style={inputBase}
+                  />
+                </label>
               </div>
 
               <div style={{ marginTop: 24 }}>
@@ -1121,7 +1101,12 @@ function BookingModal(p: ModalProps) {
                               color: "#c0651f",
                             }}
                           >
-                            {formatINR(o.price)}
+                            {displayRate(o).from ? (
+                              <span style={{ fontFamily: "var(--font-mukta), sans-serif", fontSize: 11, color: "#9a8470", fontWeight: 500 }}>
+                                from{" "}
+                              </span>
+                            ) : null}
+                            {formatINR(displayRate(o).price)}
                           </div>
                           <div
                             style={{
@@ -1130,7 +1115,7 @@ function BookingModal(p: ModalProps) {
                               color: "#9a8470",
                             }}
                           >
-                            {p.isRetreat ? "per person" : "per night"}
+                            per night
                           </div>
                           <div
                             style={{
@@ -1143,7 +1128,7 @@ function BookingModal(p: ModalProps) {
                           >
                             {soldOut
                               ? "Fully booked"
-                              : `${o.available} ${p.isRetreat ? "seats" : "left"}`}
+                              : `${o.available} ${p.isRetreat ? "available" : "left"}`}
                           </div>
                         </div>
                       </div>
@@ -1229,6 +1214,52 @@ function BookingModal(p: ModalProps) {
                   />
                 </label>
               </div>
+
+              {/* meal / board plan */}
+              {p.isStay && p.selected && p.mealPlans.length > 0 && (
+                <div style={{ marginTop: 24 }}>
+                  <span style={uppercaseLabel}>Meal plan</span>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 10, marginTop: 9 }}>
+                    {p.mealPlans.map((mp) => {
+                      const active = p.mealPlanCode === mp.code;
+                      return (
+                        <button
+                          key={mp.code}
+                          onClick={() => p.onMealPlan(mp.code)}
+                          style={{
+                            textAlign: "left",
+                            cursor: "pointer",
+                            borderRadius: 12,
+                            padding: "12px 16px",
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            gap: 12,
+                            background: active ? "#fbeeda" : "#fff",
+                            border: "2px solid " + (active ? "#d9772b" : "rgba(44,27,18,0.12)"),
+                            transition: "all .15s",
+                          }}
+                        >
+                          <span>
+                            <span style={{ fontFamily: "var(--font-mukta), sans-serif", fontSize: 14, fontWeight: 600, color: "#2c1b12" }}>
+                              {mp.code}
+                            </span>
+                            {mp.name && (
+                              <span style={{ display: "block", fontSize: 11.5, color: "#9a8470", marginTop: 2 }}>
+                                {mp.name}
+                              </span>
+                            )}
+                          </span>
+                          <span style={{ fontFamily: "var(--font-cormorant), serif", fontSize: 19, fontWeight: 700, color: "#c0651f", whiteSpace: "nowrap" }}>
+                            {formatINR(mp.price)}
+                            <span style={{ fontFamily: "var(--font-mukta), sans-serif", fontSize: 11, color: "#9a8470", fontWeight: 500 }}> / night</span>
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
               {/* rooms + extra beds (editable) */}
               {p.isStay && p.selected && (
@@ -1347,7 +1378,10 @@ function BookingModal(p: ModalProps) {
                     marginBottom: 8,
                   }}
                 >
-                  <span>{p.selected ? p.selected.name : "—"}</span>
+                  <span>
+                    {p.selected ? p.selected.name : "—"}
+                    {p.mealPlanCode ? ` · ${p.mealPlanCode}` : ""}
+                  </span>
                   <span>{p.datesLabel}</span>
                 </div>
                 <div
@@ -1365,17 +1399,14 @@ function BookingModal(p: ModalProps) {
                       ? ` · ${p.rooms} room${p.rooms > 1 ? "s" : ""}`
                       : ""}
                     {" · "}
-                    {p.isRetreat
-                      ? p.selected?.nights
-                        ? p.selected.nights + " nights"
-                        : ""
-                      : p.nights
+                    {p.nights
                       ? p.nights + (p.nights > 1 ? " nights" : " night")
                       : "—"}
                   </span>
                   <span>
                     {p.selected
-                      ? formatINR(p.selected.price) + (p.isRetreat ? " / person" : " / room / night")
+                      ? formatINR(p.isRetreat ? p.selected.price : p.roomRate) +
+                        (p.isRetreat ? " / night" : " / room / night")
                       : ""}
                   </span>
                 </div>
