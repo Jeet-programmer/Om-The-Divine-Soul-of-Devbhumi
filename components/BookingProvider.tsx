@@ -11,6 +11,7 @@ import {
 } from "react";
 import { displayRate, formatINR } from "@/lib/data";
 import { Category, Room } from "@/lib/types";
+import { COUNTRIES } from "@/lib/countries";
 import Logo from "./Logo";
 
 interface Prefill {
@@ -85,7 +86,7 @@ interface ConfSnapshot {
   dates: string;
   amountPaid: number;
   balance: number;
-  paymentType: "full" | "partial" | "later";
+  paymentType: "full" | "partial";
 }
 
 export default function BookingProvider({
@@ -114,6 +115,7 @@ export default function BookingProvider({
   const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [phone, setPhone] = useState("");
+  const [country, setCountry] = useState("IN");
   const [notes, setNotes] = useState("");
   const [errors, setErrors] = useState<Errors>({});
   const [step1Error, setStep1Error] = useState("");
@@ -125,7 +127,7 @@ export default function BookingProvider({
   const [roomCount, setRoomCount] = useState(1);
   const [extraBeds, setExtraBeds] = useState(0);
   const [mealPlanCode, setMealPlanCode] = useState("");
-  const [paymentType, setPaymentType] = useState<"full" | "partial" | "later">("full");
+  const [paymentType, setPaymentType] = useState<"full" | "partial">("full");
   const [couponInput, setCouponInput] = useState("");
   const [appliedCoupon, setAppliedCoupon] = useState<AppliedCoupon | null>(null);
   const [couponMsg, setCouponMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -209,6 +211,7 @@ export default function BookingProvider({
     setName("");
     setEmail("");
     setPhone("");
+    setCountry("IN");
     setNotes("");
     setBookingRef("");
   }, [resetState]);
@@ -318,13 +321,8 @@ export default function BookingProvider({
   // coupon discount (recomputed live against the current total)
   const discount = appliedCoupon ? clientDiscount(appliedCoupon, total) : 0;
   const payableTotal = Math.max(0, total - discount);
-  // amount to pay now based on the selected option
-  const amountDue =
-    paymentType === "later"
-      ? 0
-      : paymentType === "partial"
-      ? Math.round(payableTotal / 2)
-      : payableTotal;
+  // amount to pay now based on the selected option (20% advance or full)
+  const amountDue = paymentType === "partial" ? Math.round(payableTotal * 0.2) : payableTotal;
 
   const applyCoupon = async () => {
     const code = couponInput.trim();
@@ -369,9 +367,18 @@ export default function BookingProvider({
     if (!name.trim()) e.name = "Please enter your name.";
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()))
       e.email = "Enter a valid email address.";
-    if (!/^\d{10}$/.test(phone.replace(/\D/g, "")))
-      e.phone = "Enter a valid 10-digit phone number.";
-    if (Object.keys(e).length) return setErrors(e);
+    const phoneDigits = phone.replace(/\D/g, "");
+    if (country === "IN" ? !/^\d{10}$/.test(phoneDigits) : !/^\d{4,14}$/.test(phoneDigits))
+      e.phone =
+        country === "IN" ? "Enter a valid 10-digit mobile number." : "Enter a valid phone number.";
+    const firstError = Object.keys(e)[0];
+    if (firstError) {
+      setErrors(e);
+      const el = document.getElementById(`bk-${firstError}`);
+      el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      el?.focus({ preventScroll: true });
+      return;
+    }
     if (isStay && occupancy < guests) {
       return setSubmitError(
         `This selection sleeps ${occupancy}, but you have ${guests} guests. Add a room or an extra bed.`
@@ -382,6 +389,7 @@ export default function BookingProvider({
     setSubmitError("");
     setSubmitting(true);
 
+    const fullPhone = `+${COUNTRIES.find((c) => c.iso === country)?.dial} ${phoneDigits}`;
     const ref = "OM-" + Math.random().toString(36).slice(2, 7).toUpperCase();
     const computedCheckOut = checkOut;
 
@@ -403,7 +411,7 @@ export default function BookingProvider({
       mealPlan: selectedPlan ? `${selectedPlan.code} — ${selectedPlan.name}` : "",
       name: name.trim(),
       email: email.trim(),
-      phone: phone.trim(),
+      phone: fullPhone,
       notes: notes.trim(),
     };
 
@@ -422,24 +430,6 @@ export default function BookingProvider({
       setStep(4);
       setSubmitting(false);
     };
-
-    // reserve & pay at property — no online payment
-    if (paymentType === "later") {
-      try {
-        const res = await fetch("/api/bookings", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ ...bookingPayload, payment: { later: true } }),
-        });
-        const saved = await res.json();
-        if (!res.ok) throw new Error(saved.error || "Could not reserve.");
-        finishConfirmed(saved, 0);
-      } catch (err) {
-        setSubmitting(false);
-        setSubmitError((err as Error).message);
-      }
-      return;
-    }
 
     // fully discounted (e.g. 100%-off coupon) — no payment needed
     if (amountDue <= 0) {
@@ -490,8 +480,8 @@ export default function BookingProvider({
         amount: order.amount,
         currency: order.currency,
         name: "OM The Divine Soul of Devbhumi",
-        description: `${selected?.name || "Reservation"} · ${paymentType === "partial" ? "50% advance" : "Full payment"}`,
-        prefill: { name: name.trim(), email: email.trim(), contact: phone.trim() },
+        description: `${selected?.name || "Reservation"} · ${paymentType === "partial" ? "20% advance" : "Full payment"}`,
+        prefill: { name: name.trim(), email: email.trim(), contact: fullPhone },
         theme: { color: "#d9772b" },
         handler: async (resp: {
           razorpay_order_id: string;
@@ -536,7 +526,7 @@ export default function BookingProvider({
         const desc = (resp as { error?: { description?: string } })?.error?.description;
         setSubmitError(
           (desc ? `Payment failed: ${desc}. ` : "Payment couldn't be completed. ") +
-            'You can try again, or choose "Reserve & pay at property" to book now and pay on arrival.'
+            "Please try again."
         );
       });
       rzp.open();
@@ -571,6 +561,7 @@ export default function BookingProvider({
           name={name}
           email={email}
           phone={phone}
+          country={country}
           notes={notes}
           errors={errors}
           step1Error={step1Error}
@@ -594,7 +585,6 @@ export default function BookingProvider({
           amountDue={amountDue}
           setFull={() => setPaymentType("full")}
           setPartial={() => setPaymentType("partial")}
-          setLater={() => setPaymentType("later")}
           couponInput={couponInput}
           onCouponInput={setCouponInput}
           onApplyCoupon={applyCoupon}
@@ -639,6 +629,7 @@ export default function BookingProvider({
           setName={setName}
           setEmail={setEmail}
           setPhone={setPhone}
+          setCountry={setCountry}
           setNotes={setNotes}
         />
       )}
@@ -668,6 +659,42 @@ const inputBase: CSSProperties = {
 };
 const inputErr: CSSProperties = { ...inputBase, border: "1.5px solid #c9572e" };
 
+function FieldError({ msg }: { msg?: string }) {
+  if (!msg) return null;
+  return (
+    <span
+      role="alert"
+      style={{
+        position: "relative",
+        alignSelf: "flex-start",
+        marginTop: 4,
+        background: "#b5531f",
+        color: "#fff",
+        fontSize: 12.5,
+        fontWeight: 500,
+        padding: "7px 11px",
+        borderRadius: 8,
+        boxShadow: "0 6px 16px -6px rgba(44,27,18,.45)",
+        animation: "bkTip .18s ease-out",
+      }}
+    >
+      <span
+        style={{
+          position: "absolute",
+          top: -5,
+          left: 16,
+          width: 10,
+          height: 10,
+          background: "#b5531f",
+          transform: "rotate(45deg)",
+        }}
+      />
+      {msg}
+      <style>{`@keyframes bkTip{from{opacity:0;transform:translateY(-4px)}}`}</style>
+    </span>
+  );
+}
+
 interface ModalProps {
   step: number;
   category: Category;
@@ -681,6 +708,7 @@ interface ModalProps {
   name: string;
   email: string;
   phone: string;
+  country: string;
   notes: string;
   errors: Errors;
   step1Error: string;
@@ -700,11 +728,10 @@ interface ModalProps {
   roomRate: number;
   extraBeds: number;
   maxExtraBeds: number;
-  paymentType: "full" | "partial" | "later";
+  paymentType: "full" | "partial";
   amountDue: number;
   setFull: () => void;
   setPartial: () => void;
-  setLater: () => void;
   couponInput: string;
   onCouponInput: (v: string) => void;
   onApplyCoupon: () => void;
@@ -735,6 +762,7 @@ interface ModalProps {
   setName: (v: string) => void;
   setEmail: (v: string) => void;
   setPhone: (v: string) => void;
+  setCountry: (v: string) => void;
   setNotes: (v: string) => void;
 }
 
@@ -1163,40 +1191,65 @@ function BookingModal(p: ModalProps) {
                 <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   <span style={uppercaseLabel}>Full name</span>
                   <input
+                    id="bk-name"
                     value={p.name}
                     onChange={(e) => p.setName(e.target.value)}
                     placeholder="e.g. Ananya Sharma"
+                    autoComplete="name"
                     style={p.errors.name ? inputErr : inputBase}
                   />
-                  {p.errors.name && (
-                    <span style={{ color: "#b5531f", fontSize: 12.5 }}>{p.errors.name}</span>
-                  )}
+                  <FieldError msg={p.errors.name} />
                 </label>
-                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16 }}>
+                <div className="bk-contact-grid">
                   <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                     <span style={uppercaseLabel}>Email</span>
                     <input
+                      id="bk-email"
+                      type="email"
                       value={p.email}
                       onChange={(e) => p.setEmail(e.target.value)}
                       placeholder="you@email.com"
+                      autoComplete="email"
                       style={p.errors.email ? inputErr : inputBase}
                     />
-                    {p.errors.email && (
-                      <span style={{ color: "#b5531f", fontSize: 12.5 }}>{p.errors.email}</span>
-                    )}
+                    <FieldError msg={p.errors.email} />
                   </label>
-                  <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
-                    <span style={uppercaseLabel}>Phone</span>
-                    <input
-                      value={p.phone}
-                      onChange={(e) => p.setPhone(e.target.value)}
-                      placeholder="10-digit mobile"
-                      style={p.errors.phone ? inputErr : inputBase}
-                    />
-                    {p.errors.phone && (
-                      <span style={{ color: "#b5531f", fontSize: 12.5 }}>{p.errors.phone}</span>
-                    )}
-                  </label>
+                  <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                    <label htmlFor="bk-phone" style={uppercaseLabel}>
+                      Phone
+                    </label>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <div style={{ ...inputBase, position: "relative", width: "auto", flexShrink: 0 }}>
+                        {(() => {
+                          const c = COUNTRIES.find((c) => c.iso === p.country);
+                          return `${c?.flag} +${c?.dial} ▾`;
+                        })()}
+                        <select
+                          aria-label="Country code"
+                          value={p.country}
+                          onChange={(e) => p.setCountry(e.target.value)}
+                          style={{ position: "absolute", inset: 0, opacity: 0, cursor: "pointer" }}
+                        >
+                          {COUNTRIES.map((c) => (
+                            <option key={c.iso} value={c.iso}>
+                              {c.flag} {c.name} (+{c.dial})
+                            </option>
+                          ))}
+                        </select>
+                      </div>
+                      <input
+                        id="bk-phone"
+                        type="tel"
+                        inputMode="numeric"
+                        autoComplete="tel-national"
+                        value={p.phone}
+                        onChange={(e) => p.setPhone(e.target.value.replace(/[^\d\s-]/g, ""))}
+                        placeholder={p.country === "IN" ? "10-digit mobile" : "Phone number"}
+                        style={{ ...(p.errors.phone ? inputErr : inputBase), minWidth: 0 }}
+                      />
+                    </div>
+                    <FieldError msg={p.errors.phone} />
+                  </div>
                 </div>
                 <label style={{ display: "flex", flexDirection: "column", gap: 7 }}>
                   <span style={uppercaseLabel}>
@@ -1523,7 +1576,7 @@ function BookingModal(p: ModalProps) {
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12, marginTop: 9 }}>
                   {[
                     { type: "full" as const, title: "Pay in full", sub: "Settle the whole amount now", amt: p.payableTotal },
-                    { type: "partial" as const, title: "Pay 50% advance", sub: "Balance payable at the property", amt: Math.round(p.payableTotal / 2) },
+                    { type: "partial" as const, title: "Pay 20% advance", sub: "Balance payable at the property", amt: Math.round(p.payableTotal * 0.2) },
                   ].map((opt) => {
                     const active = p.paymentType === opt.type;
                     return (
@@ -1559,46 +1612,9 @@ function BookingModal(p: ModalProps) {
                     );
                   })}
                 </div>
-                {/* reserve & pay at property */}
-                <button
-                  onClick={p.setLater}
-                  style={{
-                    width: "100%",
-                    textAlign: "left",
-                    cursor: "pointer",
-                    borderRadius: 12,
-                    padding: "13px 16px",
-                    marginTop: 12,
-                    display: "flex",
-                    justifyContent: "space-between",
-                    alignItems: "center",
-                    gap: 12,
-                    background: p.paymentType === "later" ? "#fbeeda" : "#fff",
-                    border: "2px solid " + (p.paymentType === "later" ? "#d9772b" : "rgba(44,27,18,0.12)"),
-                    transition: "all .15s",
-                  }}
-                >
-                  <span>
-                    <span style={{ fontFamily: "var(--font-mukta), sans-serif", fontSize: 14, fontWeight: 600, color: "#2c1b12" }}>
-                      Reserve &amp; pay at property
-                    </span>
-                    <span style={{ display: "block", fontSize: 11.5, color: "#9a8470", marginTop: 2 }}>
-                      No payment now — settle the full amount at check-in
-                    </span>
-                  </span>
-                  <span style={{ fontFamily: "var(--font-mukta), sans-serif", fontSize: 12, fontWeight: 700, color: "#9a6b2e", whiteSpace: "nowrap" }}>
-                    ₹0 now
-                  </span>
-                </button>
-
                 {p.paymentType === "partial" && (
                   <p style={{ marginTop: 10, fontSize: 12.5, color: "#6b5340" }}>
                     Balance of {formatINR(p.payableTotal - p.amountDue)} due at check-in.
-                  </p>
-                )}
-                {p.paymentType === "later" && (
-                  <p style={{ marginTop: 10, fontSize: 12.5, color: "#6b5340" }}>
-                    {formatINR(p.payableTotal)} payable at the property on arrival.
                   </p>
                 )}
               </div>
@@ -1624,13 +1640,7 @@ function BookingModal(p: ModalProps) {
                     cursor: p.submitting ? "wait" : "pointer",
                   }}
                 >
-                  {p.submitting
-                    ? p.paymentType === "later"
-                      ? "Reserving…"
-                      : "Opening payment…"
-                    : p.paymentType === "later"
-                    ? "Reserve — pay at property"
-                    : `Pay ${formatINR(p.amountDue)} & Confirm`}
+                  {p.submitting ? "Opening payment…" : `Pay ${formatINR(p.amountDue)} & Confirm`}
                 </button>
               </div>
             </div>
@@ -1727,26 +1737,17 @@ function BookingModal(p: ModalProps) {
                     color: "#6b5340",
                   }}
                 >
-                  {cs?.paymentType === "later" ? (
+                  <div style={{ display: "flex", justifyContent: "space-between" }}>
+                    <span style={{ color: "#5f8a3f", fontWeight: 600 }}>
+                      Paid {cs?.paymentType === "partial" ? "(20% advance)" : "(in full)"}
+                    </span>
+                    <span style={{ color: "#5f8a3f", fontWeight: 600 }}>{formatINR(cs?.amountPaid ?? 0)}</span>
+                  </div>
+                  {cs && cs.balance > 0 && (
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ color: "#9a6b2e", fontWeight: 600 }}>Pay at property</span>
-                      <span style={{ fontWeight: 600, color: "#2c1b12" }}>{formatINR(cs?.total ?? 0)}</span>
+                      <span>Balance due at property</span>
+                      <span style={{ fontWeight: 600, color: "#2c1b12" }}>{formatINR(cs.balance)}</span>
                     </div>
-                  ) : (
-                    <>
-                      <div style={{ display: "flex", justifyContent: "space-between" }}>
-                        <span style={{ color: "#5f8a3f", fontWeight: 600 }}>
-                          Paid {cs?.paymentType === "partial" ? "(50% advance)" : "(in full)"}
-                        </span>
-                        <span style={{ color: "#5f8a3f", fontWeight: 600 }}>{formatINR(cs?.amountPaid ?? 0)}</span>
-                      </div>
-                      {cs && cs.balance > 0 && (
-                        <div style={{ display: "flex", justifyContent: "space-between" }}>
-                          <span>Balance due at property</span>
-                          <span style={{ fontWeight: 600, color: "#2c1b12" }}>{formatINR(cs.balance)}</span>
-                        </div>
-                      )}
-                    </>
                   )}
                 </div>
               </div>

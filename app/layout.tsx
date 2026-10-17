@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Cormorant_Garamond, Mukta } from "next/font/google";
 import { SpeedInsights } from "@vercel/speed-insights/next";
+import { SITE_URL } from "@/lib/site";
 import "./globals.css";
 
 const cormorant = Cormorant_Garamond({
@@ -18,20 +19,42 @@ const mukta = Mukta({
   display: "swap",
 });
 
+const description =
+  "OM The Divine Soul of Devbhumi — spiritual accommodation near Kedarnath in Guptkashi, Uttarakhand. Book glass-view cottages, yoga & meditation retreats and a peaceful stay for your Kedarnath Yatra, facing the Panch Kedar peaks.";
+
 export const metadata: Metadata = {
-  title: "OM — The Divine Soul of Devbhumi | Spiritual Eco-Sanctuary",
-  description:
-    "A spiritual eco-sanctuary cradled in Devbhumi, Uttarakhand, with a front-row seat to the snow-capped Panch Kedar and the sacred peak of Nilkantha. Glass-view cottages, yoga & meditation retreats, and the Vashishtha Bhawan venue.",
+  metadataBase: new URL(SITE_URL),
+  title: {
+    default: "OM The Divine Soul of Devbhumi | Kedarnath Hotel Booking & Spiritual Stay in Guptkashi",
+    template: "%s | OM The Divine Soul of Devbhumi",
+  },
+  description,
   keywords: [
-    "Devbhumi",
-    "Uttarakhand",
-    "spiritual retreat",
-    "yoga retreat",
+    "OM The Divine Soul of Devbhumi",
+    "Om Divine Soul",
+    "Kedarnath hotel booking",
+    "hotel near Kedarnath",
+    "stay near Kedarnath",
+    "Guptkashi hotel",
+    "hotels in Guptkashi",
+    "spiritual accommodation",
+    "spiritual retreat Uttarakhand",
+    "Kedarnath Yatra stay",
+    "Char Dham Yatra hotel",
+    "Rudraprayag cottages",
+    "yoga retreat Uttarakhand",
     "Panch Kedar",
-    "Nilkantha",
-    "eco tourism",
-    "Char Dham",
   ],
+  alternates: { canonical: "/" },
+  openGraph: {
+    type: "website",
+    siteName: "OM The Divine Soul of Devbhumi",
+    title: "OM The Divine Soul of Devbhumi — Spiritual Stay near Kedarnath",
+    description,
+    images: ["/assets/hero/hero.jpg"],
+    locale: "en_IN",
+  },
+  verification: { google: process.env.GOOGLE_SITE_VERIFICATION },
 };
 
 export default function RootLayout({

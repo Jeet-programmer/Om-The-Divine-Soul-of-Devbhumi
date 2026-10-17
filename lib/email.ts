@@ -87,7 +87,7 @@ export function renderBookingEmail(b: Booking, baseUrl?: string): string {
     b.paymentStatus === "paid"
       ? "Paid in full"
       : b.paymentStatus === "partial"
-      ? "50% advance paid"
+      ? "20% advance paid"
       : "Payment pending";
 
   // Logo from the live site when we know the base URL; an ॐ badge otherwise.

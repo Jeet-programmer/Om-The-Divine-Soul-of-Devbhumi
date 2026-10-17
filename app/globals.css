@@ -157,6 +157,8 @@ input[type="date"]::-webkit-calendar-picker-indicator {
   margin-bottom: 18px;
 }
 
+.bk-contact-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+
 /* ---- Responsive ---- */
 @media (max-width: 900px) {
   .nav-links { display: none !important; }
@@ -204,6 +206,7 @@ input[type="date"]::-webkit-calendar-picker-indicator {
 
 @media (max-width: 560px) {
   .grid-4 { grid-template-columns: 1fr !important; }
+  .bk-contact-grid { grid-template-columns: 1fr; }
   .nav-mobile-cta { padding: 9px 16px !important; font-size: 13px !important; }
 
   .sec { padding-top: 60px !important; padding-bottom: 60px !important; }
