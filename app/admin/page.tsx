@@ -852,7 +852,7 @@ function BookingsTab({
                         ps === "paid"
                           ? "Paid in full"
                           : ps === "partial"
-                          ? `50% paid · ${formatINR(b.amountPaid || 0)}`
+                          ? `20% paid · ${formatINR(b.amountPaid || 0)}`
                           : "Unpaid";
                       return (
                         <div style={{ fontSize: 11.5, fontWeight: 600, color, marginTop: 2 }}>

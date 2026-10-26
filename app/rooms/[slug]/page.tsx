@@ -22,14 +22,15 @@ export async function generateMetadata({
     const room = await getRoomBySlug(slug);
     if (room) {
       return {
-        title: `${room.name} — OM The Divine Soul of Devbhumi`,
+        title: `${room.name} — Stay near Kedarnath, Guptkashi`,
         description: room.blurb,
+        alternates: { canonical: `/rooms/${slug}` },
       };
     }
   } catch {
     /* fall through */
   }
-  return { title: "Stay — OM The Divine Soul of Devbhumi" };
+  return { title: "Stay near Kedarnath" };
 }
 
 export default async function RoomPage({

@@ -228,8 +228,8 @@ export default function Hero() {
             fontWeight: 300,
           }}
         >
-          A spiritual eco-sanctuary cradled in Devbhumi, with a front-row seat to the snow-capped
-          Panch Kedar and the sacred peak of Nilkantha.
+          A spiritual eco-sanctuary in Guptkashi on the road to Kedarnath, with a front-row seat
+          to the snow-capped Panch Kedar and the sacred peak of Nilkantha.
         </p>
 
         {/* ---------- Search widget (dates + adults + search) ---------- */}

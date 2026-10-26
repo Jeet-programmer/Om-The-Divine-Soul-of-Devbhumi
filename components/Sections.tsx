@@ -94,6 +94,11 @@ export function About() {
               beautifully unites the hearts of West Bengal and Uttarakhand. It is a sanctuary of
               peace — an antidote to the hectic pace of modern life.
             </p>
+            <p style={{ marginTop: 18, fontSize: 17, lineHeight: 1.78, color: "#5c4636" }}>
+              Set in Dewar village near Guptkashi, OM is spiritual accommodation for pilgrims on
+              the Kedarnath Yatra and the Char Dham circuit — a calm Himalayan base to rest, pray
+              and meditate before and after your darshan of Baba Kedarnath.
+            </p>
             <p
               style={{
                 marginTop: 18,
